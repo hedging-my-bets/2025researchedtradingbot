@@ -1,5 +1,3 @@
-// Production-ready HTTP bridge using WebRequest -> FastAPI inference server.
-// Requires adding http://127.0.0.1:8081 to Terminal: Tools > Options > Expert Advisors > "Allow WebRequest for listed URL".
 #property strict
 
 class CInferenceBridge {
@@ -14,7 +12,6 @@ public:
    void SetURL(const string url) { m_url = url; }
    void SetTimeout(const int ms) { m_timeout_ms = ms; }
 
-   // Minimal JSON builder to avoid external libs
    string BuildJSON(const string corr_id, const double &features[])
    {
       string s="{\"correlation_id\":\""+corr_id+"\",\"features\":[";
@@ -29,26 +26,29 @@ public:
 
    bool Predict(const double &features[], const string corr_id, double &p_win_out, int &latency_ms_out)
    {
-      char data[];
+      uchar data[];
       string body = BuildJSON(corr_id, features);
       StringToCharArray(body, data, 0, WHOLE_ARRAY, CP_UTF8);
 
-      char result[];
-      string headers = "Content-Type: application/json\r\n";
-      int status = 0;
-      uint timeout = (uint)m_timeout_ms;
+      uchar result[];
+      string resp_headers="";
 
-      int res = WebRequest("POST", m_url, NULL, timeout, data, ArraySize(data), result, headers, status);
-      if(res==-1 || status!=200){
-         PrintFormat("[InferenceBridge] WebRequest failed (res=%d, http=%d).", res, status);
+      // 9-param overload: method, url, cookie, headers, timeout, post[], post_size, result[], resp_headers
+      int bytes = WebRequest("POST", m_url, "", "Content-Type: application/json\r\n",
+                             m_timeout_ms, data, ArraySize(data), result, resp_headers);
+      if(bytes < 0){
+         PrintFormat("[InferenceBridge] WebRequest failed. err=%d", GetLastError());
+         return false;
+      }
+      if(StringFind(resp_headers, " 200") < 0 && StringFind(resp_headers, " 201") < 0){
+         Print("[InferenceBridge] Non-200 response: ", resp_headers);
          return false;
       }
 
       string j = CharArrayToString(result, 0, -1, CP_UTF8);
-      // Simple value extraction (robust enough for our fixed schema)
-      p_win_out = ExtractJsonNumber(j, "\"p_win\":");
-      latency_ms_out = (int)ExtractJsonNumber(j, "\"latency_ms\":");
-      m_model_id = ExtractJsonString(j, "\"model_id\":\"");
+      p_win_out          = ExtractJsonNumber(j, "\"p_win\":");
+      latency_ms_out     = (int)ExtractJsonNumber(j, "\"latency_ms\":");
+      m_model_id         = ExtractJsonString(j, "\"model_id\":\"");
       m_features_version = ExtractJsonString(j, "\"features_version\":\"");
       return (p_win_out>=0.0 && p_win_out<=1.0);
    }
@@ -61,9 +61,12 @@ private:
    {
       int p = StringFind(src, key);
       if(p<0) return -1.0;
-      int start = p + StringLen(key);
-      int end = start;
-      while(end<StringLen(src) && (StringGetCharacter(src, end)=='.' || (StringGetCharacter(src,end)>= '0' && StringGetCharacter(src,end)<='9') || StringGetCharacter(src,end)=='-')) end++;
+      int start = p + StringLen(key), end = start;
+      while(end<StringLen(src)){
+         int ch = StringGetCharacter(src,end);
+         if((ch>='0' && ch<='9') || ch=='.' || ch=='-' || ch=='e' || ch=='E') end++;
+         else break;
+      }
       string num = StringSubstr(src, start, end-start);
       return StringToDouble(num);
    }
