@@ -1,59 +1,58 @@
+// FXSuite/Core/OrderManager.mqh
 #property strict
 #include <Trade/Trade.mqh>
 
-enum SlippageReason { SLIP_MARKET=0, SLIP_LATENCY=1, SLIP_REJECT=2 };
-
 struct OrderRecord {
-   string python_signal_id;
-   long   ticket;
-   string symbol;
-   ENUM_ORDER_TYPE type;
-   double intended_price;
-   double fill_price;
-   SlippageReason reason;
-   datetime ts_utc;
+   ulong   ticket;
+   double  price;
+   double  sl;
+   double  tp;
+   datetime time;
+   string  corr_id;
+   string  comment;
 };
 
-class COrderManager {
+class COrderManager
+{
 private:
-   CTrade m_trade;
+   CTrade m_tr;
+
+   bool NormalizeVolume(const string sym, double &vol) const
+   {
+      double minv = SymbolInfoDouble(sym, SYMBOL_VOLUME_MIN);
+      double maxv = SymbolInfoDouble(sym, SYMBOL_VOLUME_MAX);
+      double step = SymbolInfoDouble(sym, SYMBOL_VOLUME_STEP);
+      if(step<=0.0) step=0.01;
+      if(vol<minv) vol=minv;
+      if(vol>maxv) vol=maxv;
+      vol = MathFloor(vol/step)*step;
+      return (vol>=minv && vol<=maxv);
+   }
+
 public:
-   bool SendMarket(const string symbol, ENUM_ORDER_TYPE type, double lots, double sl, double tp,
-                   const string signal_id, OrderRecord &rec)
-   {
-      MqlTick t; if(!SymbolInfoTick(symbol, t)) return false;
-      rec.symbol = symbol; rec.type = type; rec.python_signal_id=signal_id;
-      rec.ts_utc = TimeGMT();
-      rec.intended_price = (type==ORDER_TYPE_BUY ? t.ask : t.bid);
+   COrderManager(){ m_tr.SetAsyncMode(false); }
 
-      bool ok = (type==ORDER_TYPE_BUY) ? m_trade.Buy(lots, symbol, 0, sl, tp, signal_id)
-                                       : m_trade.Sell(lots, symbol, 0, sl, tp, signal_id);
-      rec.ticket = m_trade.ResultOrder();
-      rec.fill_price = m_trade.ResultPrice();
-      rec.reason = ok ? SLIP_MARKET : SLIP_REJECT;
-      return ok;
-   }
-
-   bool SendStop(const string symbol, ENUM_ORDER_TYPE type, double lots, double price, double sl, double tp,
-                 const string signal_id, OrderRecord &rec)
+   bool SendMarket(const string symbol, const ENUM_ORDER_TYPE side, double lots,
+                   const double sl, const double tp, const string corr_id, OrderRecord &out)
    {
-      rec.symbol=symbol; rec.type=type; rec.python_signal_id=signal_id; rec.ts_utc=TimeGMT(); rec.intended_price=price;
+      if(!SymbolInfoInteger(symbol, SYMBOL_TRADING_ALLOWED)) { Print("Trading not allowed: ",symbol); return false; }
+      if(!NormalizeVolume(symbol, lots)) { Print("Invalid/normalized lots failed"); return false; }
+
       bool ok=false;
-      if(type==ORDER_TYPE_BUY_STOP)  ok = m_trade.BuyStop(lots, symbol, price, 0, sl, tp, ORDER_TIME_GTC, 0, signal_id);
-      if(type==ORDER_TYPE_SELL_STOP) ok = m_trade.SellStop(lots, symbol, price, 0, sl, tp, ORDER_TIME_GTC, 0, signal_id);
-      rec.ticket = m_trade.ResultOrder(); rec.fill_price = 0.0; rec.reason = ok?SLIP_MARKET:SLIP_REJECT;
-      return ok;
-   }
-
-   bool ModifySLTP(const long position_ticket, const double sl, const double tp)
-   {
-      string sym = PositionGetString(POSITION_SYMBOL);
-      if(!PositionSelectByTicket(position_ticket)) return false;
-      return m_trade.PositionModify(sym, sl, tp);
-   }
-
-   bool CancelOrder(const long order_ticket)
-   {
-      return m_trade.OrderDelete(order_ticket);
+      string cmt = corr_id;
+      if(side==ORDER_TYPE_BUY)  ok = m_tr.Buy(lots, symbol, 0.0, sl, tp, cmt);
+      if(side==ORDER_TYPE_SELL) ok = m_tr.Sell(lots, symbol, 0.0, sl, tp, cmt);
+      if(!ok){
+         PrintFormat("Order send failed: ret=%d, reason=%d", (int)ok, GetLastError());
+         return false;
+      }
+      out.ticket = m_tr.ResultOrder();
+      out.price  = m_tr.ResultPrice();
+      out.sl     = sl;
+      out.tp     = tp;
+      out.time   = TimeCurrent();
+      out.corr_id= corr_id;
+      out.comment= cmt;
+      return (out.ticket>0);
    }
 };

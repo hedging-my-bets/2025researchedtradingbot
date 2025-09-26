@@ -1,1 +1,4 @@
-event_time_iso,currency,importance
+utc_ts,impact,currency,title
+1735603200,HIGH,USD,Non-Farm Payrolls
+1735606800,MEDIUM,EUR,ECB Presser
+1735610400,HIGH,GBP,BoE Rate Decision

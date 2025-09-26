@@ -1,83 +1,69 @@
+// FXSuite/ML/InferenceBridge.mqh
 #property strict
 
-class CInferenceBridge {
+class CInferenceBridge
+{
 private:
    string m_url;
    string m_model_id;
    string m_features_version;
-   int    m_timeout_ms;
+
+   bool ParseJsonKV(const string json, const string key, string &out) const
+   {
+      int k = StringFind(json, "\""+key+"\"");
+      if(k<0) return false;
+      int c = StringFind(json, ":", k);
+      if(c<0) return false;
+      // detect quoted or numeric
+      int q1 = StringFind(json, "\"", c);
+      if(q1==c+1){ // quoted
+         int q2 = StringFind(json, "\"", q1+1);
+         if(q2<0) return false;
+         out = StringSubstr(json, q1+1, q2-(q1+1));
+         return true;
+      } else {
+         // numeric till comma or }
+         int end = StringFind(json, ",", c+1);
+         if(end<0) end = StringFind(json, "}", c+1);
+         if(end<0) return false;
+         out = StringTrim(StringSubstr(json, c+1, end-(c+1)));
+         return true;
+      }
+   }
+
 public:
-   CInferenceBridge(): m_url("http://127.0.0.1:8081/infer"), m_timeout_ms(900) {}
-
-   void SetURL(const string url) { m_url = url; }
-   void SetTimeout(const int ms) { m_timeout_ms = ms; }
-
-   string BuildJSON(const string corr_id, const double &features[])
-   {
-      string s="{\"correlation_id\":\""+corr_id+"\",\"features\":[";
-      int n=ArraySize(features);
-      for(int i=0;i<n;i++){
-         s += DoubleToString(features[i], 10);
-         if(i<n-1) s+=",";
-      }
-      s += "]}";
-      return s;
-   }
-
-   bool Predict(const double &features[], const string corr_id, double &p_win_out, int &latency_ms_out)
-   {
-      uchar data[];
-      string body = BuildJSON(corr_id, features);
-      StringToCharArray(body, data, 0, WHOLE_ARRAY, CP_UTF8);
-
-      uchar result[];
-      string resp_headers="";
-
-      // 9-param overload: method, url, cookie, headers, timeout, post[], post_size, result[], resp_headers
-      int bytes = WebRequest("POST", m_url, "", "Content-Type: application/json\r\n",
-                             m_timeout_ms, data, ArraySize(data), result, resp_headers);
-      if(bytes < 0){
-         PrintFormat("[InferenceBridge] WebRequest failed. err=%d", GetLastError());
-         return false;
-      }
-      if(StringFind(resp_headers, " 200") < 0 && StringFind(resp_headers, " 201") < 0){
-         Print("[InferenceBridge] Non-200 response: ", resp_headers);
-         return false;
-      }
-
-      string j = CharArrayToString(result, 0, -1, CP_UTF8);
-      p_win_out          = ExtractJsonNumber(j, "\"p_win\":");
-      latency_ms_out     = (int)ExtractJsonNumber(j, "\"latency_ms\":");
-      m_model_id         = ExtractJsonString(j, "\"model_id\":\"");
-      m_features_version = ExtractJsonString(j, "\"features_version\":\"");
-      return (p_win_out>=0.0 && p_win_out<=1.0);
-   }
-
+   CInferenceBridge(): m_url(""), m_model_id(""), m_features_version("") {}
+   void SetURL(const string url){ m_url=url; }
    string ModelId() const { return m_model_id; }
    string FeaturesVersion() const { return m_features_version; }
 
-private:
-   double ExtractJsonNumber(const string src, const string key)
+   bool Predict(const double &features[], const string corr_id, double &p_win, int &latency_ms)
    {
-      int p = StringFind(src, key);
-      if(p<0) return -1.0;
-      int start = p + StringLen(key), end = start;
-      while(end<StringLen(src)){
-         int ch = StringGetCharacter(src,end);
-         if((ch>='0' && ch<='9') || ch=='.' || ch=='-' || ch=='e' || ch=='E') end++;
-         else break;
-      }
-      string num = StringSubstr(src, start, end-start);
-      return StringToDouble(num);
-   }
+      if(m_url=="") return false;
 
-   string ExtractJsonString(const string src, const string key)
-   {
-      int p = StringFind(src, key);
-      if(p<0) return "";
-      int start = p + StringLen(key);
-      int end = StringFind(src, "\"", start);
-      if(end<0) return "";
-      return StringSubstr(src, start, end-start);
+      // Build minimal JSON payload
+      string json = "{\"corr_id\":\""+corr_id+"\",\"features\":[";
+      for(int i=0;i<64;i++){
+         json += DoubleToString(features[i], 8);
+         if(i<63) json += ",";
+      }
+      json += "]}";
+
+      uchar body[]; StringToCharArray(json, body);
+      uchar resp[]; string headers="";
+      string req_headers = "Content-Type: application/json\r\n";
+
+      int code = WebRequest("POST", m_url, req_headers, 5000, body, resp, headers);
+      if(code<200 || code>=300) { Print("WebRequest failed, code=",code); return false; }
+
+      string r = CharArrayToString(resp);
+      // extract keys: p_win (numeric), latency_ms (numeric), model_id (string), features_version (string)
+      string s_p, s_ms, s_mid, s_fv;
+      if(ParseJsonKV(r,"p_win", s_p))    p_win = StringToDouble(s_p); else p_win=0.0;
+      if(ParseJsonKV(r,"latency_ms",s_ms)) latency_ms = (int)StringToInteger(s_ms); else latency_ms=0;
+      if(ParseJsonKV(r,"model_id", s_mid)) m_model_id=s_mid;
+      if(ParseJsonKV(r,"features_version", s_fv)) m_features_version=s_fv;
+
+      return (p_win>0.0 && p_win<1.0);
    }
 };
