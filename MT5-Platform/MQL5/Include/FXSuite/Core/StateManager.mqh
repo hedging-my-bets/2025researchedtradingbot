@@ -1,28 +1,72 @@
+// FXSuite/Core/StateManager.mqh
 #property strict
+
+struct SignalState {
+   string   corr_id;
+   string   symbol;
+   int      direction;   // +1 buy, -1 sell, 0 unknown
+   datetime ts_sent;
+   ulong    order_ticket; // 0 until known
+   bool     filled;
+};
 
 class CStateManager {
 private:
-   string m_file;
-public:
-   CStateManager(const string file): m_file("Files\\"+file) {}
+   CArrayObj m_states;
 
-   bool Append(const string signal_id, const long ticket, const string symbol, const double intended_price)
+public:
+   CStateManager(){}
+
+   void RegisterSignal(const string corr_id, const string symbol, const int dir)
    {
-      int h = FileOpen(m_file, FILE_READ|FILE_WRITE|FILE_CSV|FILE_ANSI);
-      if(h==INVALID_HANDLE) h = FileOpen(m_file, FILE_WRITE|FILE_CSV|FILE_ANSI);
-      if(h==INVALID_HANDLE) return false;
-      FileSeek(h, 0, SEEK_END);
-      FileWrite(h, signal_id, (string)ticket, symbol, DoubleToString(intended_price, 10), (string)TimeGMT(), "pending");
-      FileClose(h);
-      return true;
+      SignalState *st = new SignalState;
+      st.corr_id = corr_id; st.symbol = symbol; st.direction = dir;
+      st.ts_sent = TimeGMT(); st.order_ticket=0; st.filled=false;
+      m_states.Add(st);
    }
 
-   // Mark orphaned: tickets no longer present in Terminal
-   void MarkOrphans()
+   void OnOrderPlaced(const string corr_id, const ulong ticket)
    {
-      int h = FileOpen(m_file, FILE_READ|FILE_WRITE|FILE_CSV|FILE_ANSI);
-      if(h==INVALID_HANDLE) return;
-      // naive pass-through; production systems should rewrite file with updated statuses
-      FileClose(h);
+      for(int i=0;i<m_states.Total();i++){
+         SignalState *st = (SignalState*)m_states.At(i);
+         if(st.corr_id==corr_id){
+            st.order_ticket = ticket;
+            break;
+         }
+      }
+   }
+
+   void OnFill(const ulong ticket)
+   {
+      for(int i=0;i<m_states.Total();i++){
+         SignalState *st = (SignalState*)m_states.At(i);
+         if(st.order_ticket==ticket){ st->filled=true; break; }
+      }
+   }
+
+   // basic reconciliation on startup: ensure we track live positions
+   void Reconcile()
+   {
+      for(int i=0;i<PositionsTotal();i++){
+         if(PositionGetSymbol(i)){
+            ulong pos_ticket = (ulong)PositionGetInteger(POSITION_TICKET);
+            string sym       = PositionGetString(POSITION_SYMBOL);
+            bool known=false;
+            for(int j=0;j<m_states.Total();j++){
+               SignalState *st = (SignalState*)m_states.At(j);
+               if(st.order_ticket==pos_ticket){ known=true; break; }
+            }
+            if(!known){
+               SignalState *st = new SignalState;
+               st.corr_id = StringFormat("RECOV-%s-%I64u", sym, pos_ticket);
+               st.symbol  = sym;
+               st.direction = (PositionGetInteger(POSITION_TYPE)==POSITION_TYPE_BUY ? 1 : -1);
+               st.ts_sent = TimeGMT();
+               st.order_ticket = pos_ticket;
+               st.filled = true;
+               m_states.Add(st);
+            }
+         }
+      }
    }
 };

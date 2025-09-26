@@ -1,24 +1,28 @@
+// FXSuite/Core/ConfigReloader.mqh
 #property strict
 
 class CConfigReloader {
 private:
-   string m_file;
-   long   m_last_hash;
+   string   m_path;
+   datetime m_last_mtime;
+   bool     m_changed;
+
 public:
-   CConfigReloader(const string file): m_file(file), m_last_hash(0) {}
+   CConfigReloader(const string path): m_path(path), m_last_mtime(0), m_changed(false) {}
 
-   long HashFile() {
-      int h = FileOpen(m_file, FILE_READ|FILE_BIN);
-      if(h==INVALID_HANDLE) return 0;
-      uchar buf[]; ArrayResize(buf, (int)FileSize(h));
-      FileReadArray(h, buf, 0, ArraySize(buf)); FileClose(h);
-      long hash=0; for(int i=0;i<ArraySize(buf);i++) hash = (hash*131) + buf[i];
-      return hash;
+   void Poll()
+   {
+      // get modification time via FileGetInteger on FILE_MODIFY_DATE by opening read-only
+      int h = FileOpen(m_path, FILE_READ|FILE_BIN);
+      if(h==INVALID_HANDLE) { m_changed=false; return; }
+      datetime mt = (datetime)FileGetInteger(h, FILE_MODIFY_DATE);
+      FileClose(h);
+      if(m_last_mtime==0){ m_last_mtime=mt; m_changed=false; return; }
+      if(mt>m_last_mtime){ m_last_mtime=mt; m_changed=true; } else m_changed=false;
    }
 
-   bool Changed() {
-      long now = HashFile();
-      if(now!=0 && now!=m_last_hash) { m_last_hash=now; return true; }
-      return false;
-   }
+   bool Changed() const { return m_changed; }
+
+   // You can parse inside your EA after detecting Changed()==true
+   string Path() const { return m_path; }
 };
