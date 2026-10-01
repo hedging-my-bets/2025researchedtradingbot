@@ -15,6 +15,7 @@ private:
    double   m_weekly_limit;
    double   m_peak_limit;
    double   m_soft_fraction;
+   double   m_max_margin_to_equity;
    int      m_max_positions;
    bool     m_omega_policy;
 
@@ -112,6 +113,7 @@ public:
       m_weekly_limit(0.07),
       m_peak_limit(0.12),
       m_soft_fraction(0.70),
+      m_max_margin_to_equity(0.06),
       m_max_positions(12),
       m_omega_policy(false),
       m_day(0),
@@ -126,6 +128,17 @@ public:
    void ConfigureStatePath(const string path)
    {
       if(path!="") m_state_path=path;
+   }
+
+   void ConfigureMarginHeat(const double max_margin_to_equity)
+   {
+      if(max_margin_to_equity>0.0)
+         m_max_margin_to_equity=max_margin_to_equity;
+   }
+
+   double MaxMarginToEquity() const
+   {
+      return m_max_margin_to_equity;
    }
 
    // LEGACY_BEHAVIOR: daily breaker + position/heat caps only.
@@ -346,10 +359,10 @@ public:
       }
 
       double after_margin=(AccountInfoDouble(ACCOUNT_MARGIN)+margin)/eq;
-      if(after_margin>m_max_heat)
+      if(after_margin>m_max_margin_to_equity)
       {
-         reason_out=StringFormat("projected margin heat %.2f%% > cap %.2f%%",
-                                 after_margin*100.0,m_max_heat*100.0);
+         reason_out=StringFormat("projected margin/equity %.2f%% > cap %.2f%%",
+                                 after_margin*100.0,m_max_margin_to_equity*100.0);
          return false;
       }
 
