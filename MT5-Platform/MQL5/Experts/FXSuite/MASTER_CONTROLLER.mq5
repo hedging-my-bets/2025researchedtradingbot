@@ -55,7 +55,7 @@ input double InpTrailATRMult=2.0;
 // Calibration / rollover gates remain opt-in.
 input bool InpEnableConformalGate=false;
 input double InpConformalMaxWidth=0.25;
-input bool InpEnableRolloverGuard=false;
+input bool InpEnableRolloverGuard=false;\ninput bool InpStrictNewsGuard=false;\ninput int InpNewsStatusMaxAgeSec=600;
 
 input string InpConfigPath="Files\\FXSuite_Config.json";
 
@@ -241,6 +241,17 @@ void OnTimer()
       g_log.RolloverGuard(_Symbol,true,TimeCurrent());
       Comment("Rollover guard");
       return;
+   }
+
+   if(InpStrictNewsGuard)
+   {
+      string news_health_reason;
+      if(!g_news.HealthOK(TimeGMT(),InpNewsStatusMaxAgeSec,news_health_reason))
+      {
+         g_log.NewsGuard(_Symbol,true,news_health_reason,9999.0);
+         Comment("News feed health gate: ",news_health_reason);
+         return;
+      }
    }
 
    double minutes_news=MinutesToNextHighCSV("calendar.csv",TimeGMT(),_Symbol);

@@ -17,7 +17,7 @@ DATA_DIR = ENGINE_ROOT / "src" / "data"
 if str(DATA_DIR) not in sys.path:
     sys.path.insert(0, str(DATA_DIR))
 
-from news.calendar_adapter import normalize_calendar_csv
+from news.calendar_adapter import normalize_calendar_csv, normalize_calendar_frame, write_calendar_status
 
 FILES_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -117,7 +117,10 @@ def sync_slow_factors():
 def sync_calendar():
     src = DATA_DIR / "news" / "calendar.csv"
     if src.exists():
+        frame = pd.read_csv(src)
+        normalized = normalize_calendar_frame(frame)
         normalize_calendar_csv(src, FILES_DIR / "calendar.csv")
+        write_calendar_status(normalized, FILES_DIR / "news_status.csv")
 
 def main_loop():
     init_mt5()

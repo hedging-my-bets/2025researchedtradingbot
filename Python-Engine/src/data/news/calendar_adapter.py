@@ -58,3 +58,21 @@ def calendar_coverage(df: pd.DataFrame, now_utc: pd.Timestamp, forward_hours: in
         "events_in_horizon": int(len(future.merge(horizon, how="inner"))),
         "latest_event_ts": int(normalized["utc_ts"].max()) if len(normalized) else 0,
     }
+
+def write_calendar_status(normalized: pd.DataFrame, destination: Path, generated_utc: pd.Timestamp | None = None) -> None:
+    generated_utc = generated_utc or pd.Timestamp.now(tz="UTC")
+    latest = int(normalized["utc_ts"].max()) if len(normalized) else 0
+    row = pd.DataFrame([{
+        "generated_utc": int(generated_utc.timestamp()),
+        "latest_event_utc": latest,
+        "event_count": int(len(normalized)),
+    }])
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix="news_status_", suffix=".csv", dir=str(destination.parent))
+    try:
+        os.close(fd)
+        row.to_csv(tmp, index=False)
+        os.replace(tmp, destination)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
