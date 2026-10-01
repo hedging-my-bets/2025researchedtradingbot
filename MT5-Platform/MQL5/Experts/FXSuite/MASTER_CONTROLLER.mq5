@@ -51,6 +51,11 @@ input double InpTrailATRMult=2.0;
 
 input bool InpEnableConformalGate=false;
 input double InpConformalMaxWidth=0.25;
+
+// NEW_BEHAVIOR: explicit M15/H1/H4/D1 fusion. Default off.
+input bool InpEnableMTF=false;
+input bool InpMTFBlockHigherTFDisagreement=true;
+input string InpMTFWeightsPath="mtf_weights.csv";
 input bool InpEnableRolloverGuard=false;
 input bool InpStrictNewsGuard=false;
 input int InpNewsStatusMaxAgeSec=600;
@@ -61,7 +66,11 @@ input bool InpRequireLiveApproval=false;
 input string InpConfigPath="Files\\FXSuite_Config.json";
 
 CFeatureExtractor *g_feat=NULL;
+CFeatureExtractor *g_feat_h1=NULL;
+CFeatureExtractor *g_feat_h4=NULL;
+CFeatureExtractor *g_feat_d1=NULL;
 CInferenceBridge *g_infer=NULL;
+CMTFConfidence *g_mtf=NULL;
 CNewsCalendar *g_news=NULL;
 CRegimeDetector *g_regime=NULL;
 CRolloverGuard *g_roll=NULL;
@@ -182,6 +191,36 @@ bool LiveApprovalOK(string &reason)
    return true;
 }
 
+bool InferForTF(CFeatureExtractor *extractor,
+                const ENUM_TIMEFRAMES tf,
+                const string corr_id,
+                const double minutes_news,
+                double &p_cal,
+                double &p_raw,
+                double &width,
+                int &latency_ms)
+{
+   if(extractor==NULL) return false;
+
+   double features[64];
+   int intent_breakout=0;
+   int intent_trend=1;
+   int intent_squeeze=0;
+
+   if(!extractor.Build(features,intent_breakout,intent_trend,intent_squeeze))
+      return false;
+
+   int news_index=(InpFeaturesVer<=1 ? 21 : 22);
+   features[news_index]=minutes_news;
+
+   if(!g_infer.Predict(features,corr_id,p_cal,latency_ms,_Symbol,tf,InpFeaturesVer))
+      return false;
+
+   p_raw=g_infer.RawP();
+   width=g_infer.ConformalWidth();
+   return true;
+}
+
 int OnInit()
 {
    FolderCreate("FXSuite");
@@ -201,6 +240,12 @@ int OnInit()
       }
    }
 
+   if(InpEnableMTF && InpTF!=PERIOD_M15)
+   {
+      Print("MTF mode requires InpTF=PERIOD_M15.");
+      return INIT_PARAMETERS_INCORRECT;
+   }
+
    g_feat=new CFeatureExtractor(_Symbol,InpTF,InpFeaturesVer);
    g_infer=new CInferenceBridge();
    g_infer.SetURL(InpInferURL);
@@ -217,6 +262,22 @@ int OnInit()
    g_profit=new CProfitProtector(g_om);
 
    if(!g_feat.Init() || !g_regime.Init()) return INIT_FAILED;
+
+   if(InpEnableMTF)
+   {
+      g_feat_h1=new CFeatureExtractor(_Symbol,PERIOD_H1,InpFeaturesVer);
+      g_feat_h4=new CFeatureExtractor(_Symbol,PERIOD_H4,InpFeaturesVer);
+      g_feat_d1=new CFeatureExtractor(_Symbol,PERIOD_D1,InpFeaturesVer);
+      g_mtf=new CMTFConfidence();
+
+      if(!g_feat_h1.Init() || !g_feat_h4.Init() || !g_feat_d1.Init())
+      {
+         Print("MTF feature extractor initialization failed.");
+         return INIT_FAILED;
+      }
+
+      g_mtf.LoadWeights(InpMTFWeightsPath);
+   }
 
    if(InpEnableOmegaRiskPolicy)
       g_port.ConfigureOmega(InpMaxPortfolioHeat,InpDailyLossLimit,InpWeeklyLossLimit,
@@ -260,6 +321,10 @@ void OnDeinit(const int reason)
    delete g_roll;
    delete g_regime;
    delete g_news;
+   delete g_mtf;
+   delete g_feat_d1;
+   delete g_feat_h4;
+   delete g_feat_h1;
    delete g_infer;
    delete g_feat;
 }
@@ -328,27 +393,63 @@ void OnTimer()
       return;
    }
 
-   double f[64];
-   int intent_breakout=0,intent_trend=1,intent_squeeze=0;
-   if(!g_feat.Build(f,intent_breakout,intent_trend,intent_squeeze)) return;
-
-   int news_index=(InpFeaturesVer<=1?21:22);
-   f[news_index]=minutes_news;
-
-   string corr=StringFormat("%s-%I64d",_Symbol,(long)bt);
-   double p_eff=0.0;
-   int latency_ms=0;
-   if(!g_infer.Predict(f,corr,p_eff,latency_ms,_Symbol,InpTF,InpFeaturesVer)) return;
-
    RegimeProfile rp;
    if(!g_regime.Evaluate(rp)) return;
 
-   double threshold=InpMinPW*rp.pwin_threshold_mult;
-   bool conformal_block=(InpEnableConformalGate &&
-                         g_infer.ConformalWidth()>InpConformalMaxWidth);
+   string corr=StringFormat("%s-%I64d",_Symbol,(long)bt);
+   double p_eff=0.0;
+   double p_raw_for_log=0.0;
+   double conformal_width=0.0;
+   double mtf_threshold_add=0.0;
+   int latency_ms=0;
 
-   g_log.CalibrationDecision(_Symbol,g_infer.RawP(),p_eff,
-                             g_infer.ConformalWidth(),InpConformalMaxWidth,
+   if(!InpEnableMTF)
+   {
+      if(!InferForTF(g_feat,InpTF,corr,minutes_news,
+                     p_eff,p_raw_for_log,conformal_width,latency_ms))
+         return;
+   }
+   else
+   {
+      double p_m15=0.0,p_h1=0.0,p_h4=0.0,p_d1=0.0;
+      double raw_m15=0.0,raw_h1=0.0,raw_h4=0.0,raw_d1=0.0;
+      double width_m15=0.0,width_h1=0.0,width_h4=0.0,width_d1=0.0;
+      int lat_m15=0,lat_h1=0,lat_h4=0,lat_d1=0;
+
+      if(!InferForTF(g_feat,PERIOD_M15,corr+"-M15",minutes_news,
+                     p_m15,raw_m15,width_m15,lat_m15)) return;
+      if(!InferForTF(g_feat_h1,PERIOD_H1,corr+"-H1",minutes_news,
+                     p_h1,raw_h1,width_h1,lat_h1)) return;
+      if(!InferForTF(g_feat_h4,PERIOD_H4,corr+"-H4",minutes_news,
+                     p_h4,raw_h4,width_h4,lat_h4)) return;
+      if(!InferForTF(g_feat_d1,PERIOD_D1,corr+"-D1",minutes_news,
+                     p_d1,raw_d1,width_d1,lat_d1)) return;
+
+      double coherence=0.0;
+      g_mtf.Blend(p_m15,p_h1,p_h4,p_d1,(int)rp.regime,minutes_news,
+                  p_eff,coherence,mtf_threshold_add);
+
+      g_log.MTFVector(_Symbol,p_m15,p_h1,p_h4,p_d1,p_eff,coherence);
+
+      if(InpMTFBlockHigherTFDisagreement &&
+         g_mtf.ShouldBlock(p_m15,p_h4,p_d1,coherence))
+      {
+         Comment("MTF higher-timeframe disagreement block");
+         return;
+      }
+
+      p_raw_for_log=raw_m15;
+      conformal_width=MathMax(MathMax(width_m15,width_h1),
+                              MathMax(width_h4,width_d1));
+      latency_ms=lat_m15+lat_h1+lat_h4+lat_d1;
+   }
+
+   double threshold=InpMinPW*rp.pwin_threshold_mult+mtf_threshold_add;
+   bool conformal_block=(InpEnableConformalGate &&
+                         conformal_width>InpConformalMaxWidth);
+
+   g_log.CalibrationDecision(_Symbol,p_raw_for_log,p_eff,
+                             conformal_width,InpConformalMaxWidth,
                              conformal_block);
 
    if(conformal_block)
@@ -364,7 +465,7 @@ void OnTimer()
       CopyBuffer(g_ema200h,0,1,1,ema200)<=0) return;
 
    Comment(StringFormat("p_eff=%.3f raw=%.3f thr=%.3f regime=%d model=%s fv=%s lat=%dms",
-           p_eff,g_infer.RawP(),threshold,(int)rp.regime,
+           p_eff,p_raw_for_log,threshold,(int)rp.regime,
            g_infer.ModelId(),g_infer.FeaturesVersion(),latency_ms));
 
    if(!InpEnableTrades || p_eff<threshold) return;
