@@ -26,6 +26,13 @@ input double InpMinPW=0.58;
 input int InpSL_Pips=15;
 input int InpTP_Pips=30;
 input bool InpEnableTrades=false;
+
+// Execution retry/budget controls. Legacy retry defaults are preserved.
+input int InpExecMaxRetries=2;
+input int InpExecBackoffMs=75;
+input bool InpEnableExecutionBudget=false;
+input double InpMaxSpreadPips=2.0;
+input double InpSlippageBudgetPips=0.50;
 input string InpInferURL="http://127.0.0.1:8081/infer";
 input int InpFeaturesVer=1;
 
@@ -107,6 +114,23 @@ double PipValue()
    double pt=SymbolInfoDouble(_Symbol,SYMBOL_POINT);
    int dg=(int)SymbolInfoInteger(_Symbol,SYMBOL_DIGITS);
    return ((dg==3 || dg==5)?pt*10.0:pt);
+}
+
+double CurrentSpreadPips()
+{
+   MqlTick tick;
+   if(!SymbolInfoTick(_Symbol,tick)) return 9999.0;
+   double pip=PipValue();
+   if(pip<=0.0) return 9999.0;
+   return MathMax(0.0,(tick.ask-tick.bid)/pip);
+}
+
+int SlippageBudgetPoints()
+{
+   double point=SymbolInfoDouble(_Symbol,SYMBOL_POINT);
+   double pip=PipValue();
+   if(point<=0.0 || pip<=0.0) return 0;
+   return (int)MathCeil(MathMax(0.0,InpSlippageBudgetPips)*pip/point);
 }
 
 double SLPriceFromPips(const ENUM_ORDER_TYPE side,const double pips)
@@ -264,6 +288,8 @@ int OnInit()
    g_regime=new CRegimeDetector(_Symbol,InpTF);
    g_roll=new CRolloverGuard();
    g_om=new COrderManager();
+   int deviation_points=(InpEnableExecutionBudget ? SlippageBudgetPoints() : 15);
+   g_om.ConfigureRetry(InpExecMaxRetries,InpExecBackoffMs,deviation_points);
    g_risk=new CRiskManager(InpRiskPct);
    g_port=new CPortfolioControl();
    g_state=new CStateManager();
@@ -379,6 +405,19 @@ void OnTimer()
    {
       Comment("CIRCUIT BREAKER: ",cb);
       return;
+   }
+
+   if(InpEnableExecutionBudget)
+   {
+      double spread_pips=CurrentSpreadPips();
+      if(spread_pips>InpMaxSpreadPips)
+      {
+         g_log.ExecutionGuard(_Symbol,true,"spread_guard",
+                              spread_pips,InpMaxSpreadPips,InpSlippageBudgetPips);
+         Comment(StringFormat("Spread guard: %.2f > %.2f pips",
+                              spread_pips,InpMaxSpreadPips));
+         return;
+      }
    }
 
    if(InpEnableRolloverGuard && g_roll.IsGuarded(TimeCurrent()))
