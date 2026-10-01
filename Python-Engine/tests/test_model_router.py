@@ -11,6 +11,7 @@ from execution.model_router import (
     ArtifactValidationError,
     artifact_dir,
     validate_artifact_hashes,
+    timeframe_key,
 )
 from ml_pipeline.model_registry import sha256_file
 
@@ -54,3 +55,9 @@ def test_inference_server_is_wired_to_registry_and_router():
     assert "FEATURE_REGISTRY.sanitize" in src
     assert "ROUTER.predict" in src
     assert "REQUIRE_PAIR_MODEL" in src
+
+def test_mql_timeframe_keys():
+    assert timeframe_key(15) == "M15"
+    assert timeframe_key(16385) == "H1"
+    assert timeframe_key(16388) == "H4"
+    assert timeframe_key(16408) == "D1"
