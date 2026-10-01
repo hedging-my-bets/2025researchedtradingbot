@@ -84,4 +84,51 @@ public:
          "\"symbol\":\"%s\",\"tf\":\"%s\",\"ece\":%.8f,\"brier\":%.8f,\"mce\":%.8f,\"conformal_width\":%.8f",
          Esc(symbol),Esc(tf),ece,brier,mce,width));
    }
+   bool NewsGuard(const string symbol,const bool blocked,const string reason,const double minutes_to_event) const
+   {
+      return Event("news_guard",StringFormat(
+         "\"symbol\":\"%s\",\"blocked\":%s,\"reason\":\"%s\",\"minutes_to_event\":%.4f",
+         Esc(symbol),blocked?"true":"false",Esc(reason),minutes_to_event));
+   }
+
+   bool RolloverGuard(const string symbol,const bool blocked,const datetime broker_time) const
+   {
+      return Event("rollover_guard",StringFormat(
+         "\"symbol\":\"%s\",\"blocked\":%s,\"broker_time\":%I64d",
+         Esc(symbol),blocked?"true":"false",(long)broker_time));
+   }
+
+   bool MTFVector(const string symbol,const double p_m15,const double p_h1,
+                  const double p_h4,const double p_d1,const double blend,
+                  const double coherence) const
+   {
+      return Event("mtf_vector",StringFormat(
+         "\"symbol\":\"%s\",\"p_m15\":%.8f,\"p_h1\":%.8f,\"p_h4\":%.8f,\"p_d1\":%.8f,\"blend\":%.8f,\"coherence_score\":%.8f",
+         Esc(symbol),p_m15,p_h1,p_h4,p_d1,blend,coherence));
+   }
+
+   bool ParityMetric(const string bucket,const double modeled,const double live_value,
+                     const double error_pct) const
+   {
+      return Event("parity_metric",StringFormat(
+         "\"bucket\":\"%s\",\"modeled\":%.8f,\"live\":%.8f,\"error_pct\":%.8f",
+         Esc(bucket),modeled,live_value,error_pct));
+   }
+
+   bool CalibrationDecision(const string symbol,const double p_raw,const double p_cal,
+                            const double width,const double max_width,const bool blocked) const
+   {
+      return Event("calibration_decision",StringFormat(
+         "\"symbol\":\"%s\",\"p_raw\":%.8f,\"p_cal\":%.8f,\"conformal_width\":%.8f,\"max_width\":%.8f,\"blocked\":%s",
+         Esc(symbol),p_raw,p_cal,width,max_width,blocked?"true":"false"));
+   }
+
+   bool TradeClose(const string symbol,const ulong deal,const ulong position_id,
+                   const double price,const double volume,const double gross_profit,
+                   const double commission,const double swap,const double net_pnl) const
+   {
+      return Event("trade_close",StringFormat(
+         "\"symbol\":\"%s\",\"deal\":%I64u,\"position_id\":%I64u,\"price\":%.10f,\"volume\":%.8f,\"gross_profit\":%.8f,\"commission\":%.8f,\"swap\":%.8f,\"net_pnl\":%.8f",
+         Esc(symbol),deal,position_id,price,volume,gross_profit,commission,swap,net_pnl));
+   }
 };

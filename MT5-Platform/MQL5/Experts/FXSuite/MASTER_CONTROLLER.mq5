@@ -147,7 +147,7 @@ void OnDeinit(const int reason)
    EventKillTimer();
    if(g_ema50h!=INVALID_HANDLE) IndicatorRelease(g_ema50h);
    if(g_ema200h!=INVALID_HANDLE) IndicatorRelease(g_ema200h);
-   delete g_profit; delete g_log; delete g_cvar; delete g_cfg; delete g_state;
+   delete g_profit; delete g_roll; delete g_log; delete g_cvar; delete g_cfg; delete g_state;
    delete g_port; delete g_risk; delete g_om; delete g_regime; delete g_news;
    delete g_infer; delete g_feat;
 }
