@@ -1,66 +1,451 @@
 features_version: 1
+registry_version: omega-v1
 meta_features:
-  - {name: ret_1, type: numeric}
-  - {name: ret_5, type: numeric}
-  - {name: atr, type: numeric}
-  - {name: bb_width_over_atr, type: numeric}
-  - {name: bb_width, type: numeric}
-  - {name: ema_regime, type: numeric}
-  - {name: adx, type: numeric}
-  - {name: rsi, type: numeric}
-  - {name: cci, type: numeric}
-  - {name: macd_main, type: numeric}
-  - {name: macd_signal, type: numeric}
-  - {name: macd_hist, type: numeric}
-  - {name: stochastic_k, type: numeric}
-  - {name: stochastic_d, type: numeric}
-  - {name: spread_price, type: numeric}
-  - {name: hour, type: numeric}
-  - {name: day_of_week, type: numeric}
-  - {name: session_id, type: numeric}
-  - {name: bb_z, type: numeric}
-  - {name: price_vs_ema20, type: numeric}
-  - {name: intent_breakout, type: numeric}
-  - {name: minutes_to_high_news, type: numeric}
-  - {name: intent_trend, type: numeric}
-  - {name: intent_squeeze, type: numeric}
-  - {name: atr_relative, type: numeric}
-  - {name: reserved_25, type: numeric}
-  - {name: reserved_26, type: numeric}
-  - {name: reserved_27, type: numeric}
-  - {name: reserved_28, type: numeric}
-  - {name: reserved_29, type: numeric}
-  - {name: reserved_30, type: numeric}
-  - {name: reserved_31, type: numeric}
-  - {name: reserved_32, type: numeric}
-  - {name: reserved_33, type: numeric}
-  - {name: reserved_34, type: numeric}
-  - {name: reserved_35, type: numeric}
-  - {name: reserved_36, type: numeric}
-  - {name: reserved_37, type: numeric}
-  - {name: reserved_38, type: numeric}
-  - {name: reserved_39, type: numeric}
-  - {name: reserved_40, type: numeric}
-  - {name: reserved_41, type: numeric}
-  - {name: reserved_42, type: numeric}
-  - {name: reserved_43, type: numeric}
-  - {name: reserved_44, type: numeric}
-  - {name: reserved_45, type: numeric}
-  - {name: reserved_46, type: numeric}
-  - {name: reserved_47, type: numeric}
-  - {name: reserved_48, type: numeric}
-  - {name: reserved_49, type: numeric}
-  - {name: reserved_50, type: numeric}
-  - {name: reserved_51, type: numeric}
-  - {name: reserved_52, type: numeric}
-  - {name: reserved_53, type: numeric}
-  - {name: reserved_54, type: numeric}
-  - {name: reserved_55, type: numeric}
-  - {name: reserved_56, type: numeric}
-  - {name: reserved_57, type: numeric}
-  - {name: reserved_58, type: numeric}
-  - {name: reserved_59, type: numeric}
-  - {name: reserved_60, type: numeric}
-  - {name: reserved_61, type: numeric}
-  - {name: reserved_62, type: numeric}
-  - {name: reserved_63, type: numeric}
+  - name: ret_1
+    type: numeric
+    unit: fraction
+    min: -0.2
+    max: 0.2
+    null_policy: reject
+    clip: true
+  - name: ret_5
+    type: numeric
+    unit: fraction
+    min: -0.5
+    max: 0.5
+    null_policy: reject
+    clip: true
+  - name: atr
+    type: numeric
+    unit: price
+    min: 0
+    max: 1000
+    null_policy: reject
+    clip: true
+  - name: bb_width_over_atr
+    type: numeric
+    unit: ratio
+    min: 0
+    max: 100
+    null_policy: reject
+    clip: true
+  - name: bb_width
+    type: numeric
+    unit: price
+    min: 0
+    max: 2000
+    null_policy: reject
+    clip: true
+  - name: ema_regime
+    type: numeric
+    unit: category
+    min: -1
+    max: 1
+    null_policy: reject
+    clip: true
+  - name: adx
+    type: numeric
+    unit: index
+    min: 0
+    max: 100
+    null_policy: reject
+    clip: true
+  - name: rsi
+    type: numeric
+    unit: index
+    min: 0
+    max: 100
+    null_policy: reject
+    clip: true
+  - name: cci
+    type: numeric
+    unit: index
+    min: -1000
+    max: 1000
+    null_policy: reject
+    clip: true
+  - name: macd_main
+    type: numeric
+    unit: price
+    min: -100
+    max: 100
+    null_policy: reject
+    clip: true
+  - name: macd_signal
+    type: numeric
+    unit: price
+    min: -100
+    max: 100
+    null_policy: reject
+    clip: true
+  - name: macd_hist
+    type: numeric
+    unit: price
+    min: -100
+    max: 100
+    null_policy: reject
+    clip: true
+  - name: stochastic_k
+    type: numeric
+    unit: index
+    min: 0
+    max: 100
+    null_policy: reject
+    clip: true
+  - name: stochastic_d
+    type: numeric
+    unit: index
+    min: 0
+    max: 100
+    null_policy: reject
+    clip: true
+  - name: spread_price
+    type: numeric
+    unit: price
+    min: 0
+    max: 10
+    null_policy: reject
+    clip: true
+  - name: hour
+    type: numeric
+    unit: hour
+    min: 0
+    max: 23
+    null_policy: reject
+    clip: true
+  - name: day_of_week
+    type: numeric
+    unit: day
+    min: 0
+    max: 6
+    null_policy: reject
+    clip: true
+  - name: session_id
+    type: numeric
+    unit: category
+    min: 0
+    max: 2
+    null_policy: reject
+    clip: true
+  - name: bb_z
+    type: numeric
+    unit: zscore
+    min: -10
+    max: 10
+    null_policy: reject
+    clip: true
+  - name: price_vs_ema20
+    type: numeric
+    unit: fraction
+    min: -1
+    max: 1
+    null_policy: reject
+    clip: true
+  - name: intent_breakout
+    type: numeric
+    unit: bool
+    min: 0
+    max: 1
+    null_policy: reject
+    clip: true
+  - name: minutes_to_high_news
+    type: numeric
+    unit: minutes
+    min: 0
+    max: 10080
+    null_policy: reject
+    clip: true
+  - name: intent_trend
+    type: numeric
+    unit: bool
+    min: 0
+    max: 1
+    null_policy: reject
+    clip: true
+  - name: intent_squeeze
+    type: numeric
+    unit: bool
+    min: 0
+    max: 1
+    null_policy: reject
+    clip: true
+  - name: atr_relative
+    type: numeric
+    unit: ratio
+    min: 0
+    max: 20
+    null_policy: reject
+    clip: true
+  - name: reserved_25
+    type: numeric
+    unit: reserved
+    min: -1000000
+    max: 1000000
+    null_policy: reject
+    clip: true
+  - name: reserved_26
+    type: numeric
+    unit: reserved
+    min: -1000000
+    max: 1000000
+    null_policy: reject
+    clip: true
+  - name: reserved_27
+    type: numeric
+    unit: reserved
+    min: -1000000
+    max: 1000000
+    null_policy: reject
+    clip: true
+  - name: reserved_28
+    type: numeric
+    unit: reserved
+    min: -1000000
+    max: 1000000
+    null_policy: reject
+    clip: true
+  - name: reserved_29
+    type: numeric
+    unit: reserved
+    min: -1000000
+    max: 1000000
+    null_policy: reject
+    clip: true
+  - name: reserved_30
+    type: numeric
+    unit: reserved
+    min: -1000000
+    max: 1000000
+    null_policy: reject
+    clip: true
+  - name: reserved_31
+    type: numeric
+    unit: reserved
+    min: -1000000
+    max: 1000000
+    null_policy: reject
+    clip: true
+  - name: reserved_32
+    type: numeric
+    unit: reserved
+    min: -1000000
+    max: 1000000
+    null_policy: reject
+    clip: true
+  - name: reserved_33
+    type: numeric
+    unit: reserved
+    min: -1000000
+    max: 1000000
+    null_policy: reject
+    clip: true
+  - name: reserved_34
+    type: numeric
+    unit: reserved
+    min: -1000000
+    max: 1000000
+    null_policy: reject
+    clip: true
+  - name: reserved_35
+    type: numeric
+    unit: reserved
+    min: -1000000
+    max: 1000000
+    null_policy: reject
+    clip: true
+  - name: reserved_36
+    type: numeric
+    unit: reserved
+    min: -1000000
+    max: 1000000
+    null_policy: reject
+    clip: true
+  - name: reserved_37
+    type: numeric
+    unit: reserved
+    min: -1000000
+    max: 1000000
+    null_policy: reject
+    clip: true
+  - name: reserved_38
+    type: numeric
+    unit: reserved
+    min: -1000000
+    max: 1000000
+    null_policy: reject
+    clip: true
+  - name: reserved_39
+    type: numeric
+    unit: reserved
+    min: -1000000
+    max: 1000000
+    null_policy: reject
+    clip: true
+  - name: reserved_40
+    type: numeric
+    unit: reserved
+    min: -1000000
+    max: 1000000
+    null_policy: reject
+    clip: true
+  - name: reserved_41
+    type: numeric
+    unit: reserved
+    min: -1000000
+    max: 1000000
+    null_policy: reject
+    clip: true
+  - name: reserved_42
+    type: numeric
+    unit: reserved
+    min: -1000000
+    max: 1000000
+    null_policy: reject
+    clip: true
+  - name: reserved_43
+    type: numeric
+    unit: reserved
+    min: -1000000
+    max: 1000000
+    null_policy: reject
+    clip: true
+  - name: reserved_44
+    type: numeric
+    unit: reserved
+    min: -1000000
+    max: 1000000
+    null_policy: reject
+    clip: true
+  - name: reserved_45
+    type: numeric
+    unit: reserved
+    min: -1000000
+    max: 1000000
+    null_policy: reject
+    clip: true
+  - name: reserved_46
+    type: numeric
+    unit: reserved
+    min: -1000000
+    max: 1000000
+    null_policy: reject
+    clip: true
+  - name: reserved_47
+    type: numeric
+    unit: reserved
+    min: -1000000
+    max: 1000000
+    null_policy: reject
+    clip: true
+  - name: reserved_48
+    type: numeric
+    unit: reserved
+    min: -1000000
+    max: 1000000
+    null_policy: reject
+    clip: true
+  - name: reserved_49
+    type: numeric
+    unit: reserved
+    min: -1000000
+    max: 1000000
+    null_policy: reject
+    clip: true
+  - name: reserved_50
+    type: numeric
+    unit: reserved
+    min: -1000000
+    max: 1000000
+    null_policy: reject
+    clip: true
+  - name: reserved_51
+    type: numeric
+    unit: reserved
+    min: -1000000
+    max: 1000000
+    null_policy: reject
+    clip: true
+  - name: reserved_52
+    type: numeric
+    unit: reserved
+    min: -1000000
+    max: 1000000
+    null_policy: reject
+    clip: true
+  - name: reserved_53
+    type: numeric
+    unit: reserved
+    min: -1000000
+    max: 1000000
+    null_policy: reject
+    clip: true
+  - name: reserved_54
+    type: numeric
+    unit: reserved
+    min: -1000000
+    max: 1000000
+    null_policy: reject
+    clip: true
+  - name: reserved_55
+    type: numeric
+    unit: reserved
+    min: -1000000
+    max: 1000000
+    null_policy: reject
+    clip: true
+  - name: reserved_56
+    type: numeric
+    unit: reserved
+    min: -1000000
+    max: 1000000
+    null_policy: reject
+    clip: true
+  - name: reserved_57
+    type: numeric
+    unit: reserved
+    min: -1000000
+    max: 1000000
+    null_policy: reject
+    clip: true
+  - name: reserved_58
+    type: numeric
+    unit: reserved
+    min: -1000000
+    max: 1000000
+    null_policy: reject
+    clip: true
+  - name: reserved_59
+    type: numeric
+    unit: reserved
+    min: -1000000
+    max: 1000000
+    null_policy: reject
+    clip: true
+  - name: reserved_60
+    type: numeric
+    unit: reserved
+    min: -1000000
+    max: 1000000
+    null_policy: reject
+    clip: true
+  - name: reserved_61
+    type: numeric
+    unit: reserved
+    min: -1000000
+    max: 1000000
+    null_policy: reject
+    clip: true
+  - name: reserved_62
+    type: numeric
+    unit: reserved
+    min: -1000000
+    max: 1000000
+    null_policy: reject
+    clip: true
+  - name: reserved_63
+    type: numeric
+    unit: reserved
+    min: -1000000
+    max: 1000000
+    null_policy: reject
+    clip: true
