@@ -16,6 +16,7 @@ def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--csv", required=True, type=Path)
     p.add_argument("--out", required=True, type=Path)
+    p.add_argument("--mt5-csv", type=Path, default=None)
     args = p.parse_args()
 
     df = pd.read_csv(args.csv)
@@ -48,6 +49,21 @@ def main() -> int:
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+
+    if args.mt5_csv is not None:
+        rows = ["regime,news_bucket,w_m15,w_h1,w_h4,w_d1"]
+        bucket_map = {"near": 0, "mid": 1, "far": 2}
+        for regime in range(6):
+            for bucket_name, bucket_id in bucket_map.items():
+                weights = groups.get(f"{regime}:{bucket_name}", payload["default_weights"])
+                rows.append(
+                    f"{regime},{bucket_id}," +
+                    ",".join(f"{float(x):.10f}" for x in weights)
+                )
+        args.mt5_csv.parent.mkdir(parents=True, exist_ok=True)
+        args.mt5_csv.write_text("\n".join(rows) + "\n")
+        print(args.mt5_csv)
+
     print(args.out)
     return 0
 
