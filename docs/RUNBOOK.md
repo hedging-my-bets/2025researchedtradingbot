@@ -13,6 +13,14 @@ Live trading is disabled by default. Omega sizing, expanded drawdown policy, con
 7. Verify normalized `calendar.csv` and `news_status.csv` are being refreshed.
 8. Run nightly TCA and inspect rejects, p95 acknowledgements and slippage.
 
+## Model promotion
+A research candidate is not a live model until the machine-readable promotion decision is eligible and the artifact hashes validate.
+
+Use:
+`python tools/promote_candidate.py --candidate <candidate_dir> --decision <promotion.json>`
+
+This installs the candidate into the exact `Python-Engine/artifacts/live/SYMBOL/TIMEFRAME` route. Restart/reload inference explicitly afterward. The live release fingerprint includes deployed model/calibration/manifest bytes when present.
+
 ## Before tiny live
 1. Promotion review is separate from model training.
 2. Create/verify the current release fingerprint.
