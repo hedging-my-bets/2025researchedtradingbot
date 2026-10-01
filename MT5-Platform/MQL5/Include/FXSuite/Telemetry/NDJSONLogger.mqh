@@ -137,4 +137,18 @@ public:
          "\"blocked\":%s,\"reason\":\"%s\",\"fingerprint\":\"%s\"",
          blocked?"true":"false",Esc(reason),Esc(fingerprint)));
    }
+   bool CostEstimate(const string symbol,
+                     const double spread_money,
+                     const double commission_money,
+                     const double slippage_money,
+                     const double swap_money,
+                     const double total_money,
+                     const double cost_r,
+                     const bool swap_supported) const
+   {
+      return Event("cost_estimate",StringFormat(
+         "\"symbol\":\"%s\",\"spread_money\":%.8f,\"commission_money\":%.8f,\"slippage_money\":%.8f,\"swap_money\":%.8f,\"total_cost_money\":%.8f,\"cost_r\":%.8f,\"swap_supported\":%s",
+         Esc(symbol),spread_money,commission_money,slippage_money,swap_money,
+         total_money,cost_r,swap_supported?"true":"false"));
+   }
 };
