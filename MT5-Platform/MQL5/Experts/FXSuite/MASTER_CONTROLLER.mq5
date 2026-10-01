@@ -7,6 +7,7 @@
 #include <FXSuite/Filters/NewsCalendar.mqh>
 #include <FXSuite/Filters/RegimeDetector.mqh>
 #include <FXSuite/Filters/RolloverGuard.mqh>
+#include <FXSuite/Core/BuildFingerprint.mqh>
 #include <FXSuite/Core/OrderManager.mqh>
 #include <FXSuite/Core/RiskManager.mqh>
 #include <FXSuite/Core/PortfolioControl.mqh>
@@ -27,7 +28,6 @@ input bool InpEnableTrades=false;
 input string InpInferURL="http://127.0.0.1:8081/infer";
 input int InpFeaturesVer=1;
 
-// LEGACY_BEHAVIOR by default.
 input bool InpEnableOmegaRiskPolicy=false;
 input double InpMaxPortfolioHeat=0.06;
 input double InpDailyLossLimit=0.03;
@@ -36,26 +36,27 @@ input double InpPeakLossLimit=0.12;
 input double InpSoftHaltFraction=0.70;
 input int InpMaxPositions=12;
 
-// NEW_BEHAVIOR sizing remains opt-in.
 input bool InpEnableOmegaSizer=false;
 input double InpKellyMax=0.15;
 input double InpCVaRLimitR=1.50;
 
-// BE+.
 input double InpBE_TriggerPctEquity=0.0;
 input double InpBE_TriggerR=1.0;
 input double InpBE_OffsetPips=0.2;
 input bool InpBE_UseOR=true;
 
-// ATR trailing remains opt-in.
 input bool InpEnableATRTrail=false;
 input double InpTrailStartR=1.5;
 input double InpTrailATRMult=2.0;
 
-// Calibration / rollover gates remain opt-in.
 input bool InpEnableConformalGate=false;
 input double InpConformalMaxWidth=0.25;
-input bool InpEnableRolloverGuard=false;\ninput bool InpStrictNewsGuard=false;\ninput int InpNewsStatusMaxAgeSec=600;
+input bool InpEnableRolloverGuard=false;
+input bool InpStrictNewsGuard=false;
+input int InpNewsStatusMaxAgeSec=600;
+
+// NEW_BEHAVIOR. Default false preserves legacy local operation.
+input bool InpRequireLiveApproval=false;
 
 input string InpConfigPath="Files\\FXSuite_Config.json";
 
@@ -77,7 +78,9 @@ int g_ema50h=INVALID_HANDLE;
 int g_ema200h=INVALID_HANDLE;
 datetime g_last_bar=0;
 int g_last_risk_state=-1;
-datetime g_last_risk_log=0;\nstring g_bar_key="";
+datetime g_last_risk_log=0;
+string g_bar_key="";
+string g_cvar_path="FXSuite\\cvar_history.csv";
 
 double PipValue()
 {
@@ -115,7 +118,7 @@ double MinutesToNextHighCSV(const string path,const datetime now_utc,const strin
    StringToUpper(base);
    StringToUpper(quote);
 
-   int h=FileOpen(path,FILE_READ|FILE_CSV|FILE_ANSI);
+   int h=FileOpen(path,FILE_READ|FILE_CSV|FILE_ANSI,',');
    if(h==INVALID_HANDLE) return 9999.0;
 
    for(int i=0;i<4 && !FileIsEnding(h);++i) FileReadString(h);
@@ -141,8 +144,63 @@ double MinutesToNextHighCSV(const string path,const datetime now_utc,const strin
    return MathMax(0.0,best);
 }
 
+bool LiveApprovalOK(string &reason)
+{
+   if(FXSUITE_BUILD_FINGERPRINT=="UNARMED")
+   {
+      reason="build fingerprint is UNARMED";
+      return false;
+   }
+
+   int h=FileOpen("FXSuite\\live_approval.csv",FILE_READ|FILE_CSV|FILE_ANSI,',');
+   if(h==INVALID_HANDLE)
+   {
+      reason="live_approval.csv missing";
+      return false;
+   }
+
+   for(int i=0;i<3 && !FileIsEnding(h);++i) FileReadString(h);
+
+   string approved=FileReadString(h);
+   string fingerprint=FileReadString(h);
+   string created_utc=FileReadString(h);
+   FileClose(h);
+
+   if(approved!="1")
+   {
+      reason="live approval flag is not 1";
+      return false;
+   }
+
+   if(fingerprint!=FXSUITE_BUILD_FINGERPRINT)
+   {
+      reason="live approval fingerprint mismatch";
+      return false;
+   }
+
+   reason="approved";
+   return true;
+}
+
 int OnInit()
 {
+   FolderCreate("FXSuite");
+
+   g_bar_key=StringFormat("FXSuite.lastbar.%I64d.%s.%d",
+                          (long)AccountInfoInteger(ACCOUNT_LOGIN),_Symbol,(int)InpTF);
+   if(GlobalVariableCheck(g_bar_key))
+      g_last_bar=(datetime)GlobalVariableGet(g_bar_key);
+
+   if(InpEnableTrades && InpRequireLiveApproval)
+   {
+      string approval_reason;
+      if(!LiveApprovalOK(approval_reason))
+      {
+         Print("Live approval blocked initialization: ",approval_reason);
+         return INIT_FAILED;
+      }
+   }
+
    g_feat=new CFeatureExtractor(_Symbol,InpTF,InpFeaturesVer);
    g_infer=new CInferenceBridge();
    g_infer.SetURL(InpInferURL);
@@ -168,6 +226,8 @@ int OnInit()
 
    g_port.OnStartup();
    g_state.Reconcile();
+   g_cvar.Load(g_cvar_path);
+
    g_profit.ConfigureBE(InpBE_TriggerPctEquity,InpBE_TriggerR,InpBE_OffsetPips,InpBE_UseOR);
    g_profit.ConfigureATR(InpEnableATRTrail,InpTF,InpTrailStartR,InpTrailATRMult);
 
@@ -182,6 +242,10 @@ int OnInit()
 void OnDeinit(const int reason)
 {
    EventKillTimer();
+
+   if(g_cvar!=NULL)
+      g_cvar.Save(g_cvar_path);
+
    if(g_ema50h!=INVALID_HANDLE) IndicatorRelease(g_ema50h);
    if(g_ema200h!=INVALID_HANDLE) IndicatorRelease(g_ema200h);
 
@@ -227,7 +291,9 @@ void OnTimer()
 
    datetime bt=iTime(_Symbol,InpTF,0);
    if(bt==0 || bt==g_last_bar) return;
+
    g_last_bar=bt;
+   GlobalVariableSet(g_bar_key,(double)g_last_bar);
 
    string cb;
    if(g_port.CircuitBreakerTriggered(cb))
@@ -302,6 +368,16 @@ void OnTimer()
            g_infer.ModelId(),g_infer.FeaturesVersion(),latency_ms));
 
    if(!InpEnableTrades || p_eff<threshold) return;
+
+   if(InpRequireLiveApproval)
+   {
+      string approval_reason;
+      if(!LiveApprovalOK(approval_reason))
+      {
+         Comment("Live approval invalid: ",approval_reason);
+         return;
+      }
+   }
 
    ENUM_ORDER_TYPE side;
    if(ema50[0]>ema200[0]) side=ORDER_TYPE_BUY;
@@ -381,4 +457,5 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
    double eq=AccountInfoDouble(ACCOUNT_EQUITY);
    double risk_money=MathMax(1e-9,eq*InpRiskPct);
    g_cvar.AddR(pnl/risk_money);
+   g_cvar.Save(g_cvar_path);
 }

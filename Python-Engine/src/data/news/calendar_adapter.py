@@ -26,8 +26,11 @@ def normalize_calendar_frame(df: pd.DataFrame) -> pd.DataFrame:
     title_col = "event_name" if "event_name" in df.columns else None
     title = df[title_col].astype(str) if title_col else ""
 
+    # pandas 3 may preserve microsecond resolution; Timestamp.timestamp() is unit-stable.
+    epoch_seconds = pd.Series([int(v.timestamp()) for v in ts], index=df.index, dtype="int64")
+
     out = pd.DataFrame({
-        "utc_ts": (ts.astype("int64") // 10**9).astype("int64"),
+        "utc_ts": epoch_seconds,
         "impact": imp,
         "currency": df["currency"].astype(str).str.upper(),
         "title": title,
