@@ -1,29 +1,52 @@
-# Production drift detector with PSI + alerts map.
-import numpy as np, pandas as pd
+import numpy as np
+import pandas as pd
 from typing import Dict
 
 class FeatureDriftDetector:
-    def __init__(self, baseline_stats: Dict[str, Dict[str, float]], psi_warn=0.1, psi_crit=0.25):
-        self.baseline = baseline_stats
-        self.psi_warn = psi_warn
-        self.psi_crit = psi_crit
+    def __init__(self, baseline_samples: Dict[str, np.ndarray], psi_retrain=0.20):
+        self.baseline = baseline_samples
+        self.psi_retrain = psi_retrain
 
     @staticmethod
-    def _psi(expected: np.ndarray, actual: np.ndarray, bins: int = 10) -> float:
-        e_hist, b = np.histogram(expected, bins=bins)
-        a_hist, _ = np.histogram(actual, bins=b)
-        e = e_hist / (e_hist.sum() + 1e-12)
-        a = a_hist / (a_hist.sum() + 1e-12)
-        return float(np.sum((a - e) * np.log((a + 1e-12) / (e + 1e-12))))
+    def psi(expected: np.ndarray, actual: np.ndarray, bins: int = 10) -> float:
+        expected = np.asarray(expected, dtype=float)
+        actual = np.asarray(actual, dtype=float)
+        expected = expected[np.isfinite(expected)]
+        actual = actual[np.isfinite(actual)]
+        if expected.size < 100 or actual.size < 100:
+            return 0.0
+        q = np.unique(np.quantile(expected, np.linspace(0.0, 1.0, bins + 1)))
+        if q.size < 3:
+            return 0.0
+        e, _ = np.histogram(expected, bins=q)
+        a, _ = np.histogram(actual, bins=q)
+        e = np.maximum(e / max(1, e.sum()), 1e-6)
+        a = np.maximum(a / max(1, a.sum()), 1e-6)
+        return float(np.sum((a - e) * np.log(a / e)))
 
-    def check(self, live: pd.DataFrame) -> Dict[str, str]:
-        alerts: Dict[str,str] = {}
-        for col, stats in self.baseline.items():
-            if col not in live.columns: continue
-            e = np.random.normal(stats.get("mean",0.0), max(1e-6, stats.get("std",1.0)), size=8192)
-            a = live[col].dropna().values[-8192:]
-            if a.size < 100: continue
-            score = self._psi(e, a)
-            if score > self.psi_crit: alerts[col] = "CRITICAL"
-            elif score > self.psi_warn: alerts[col] = "WARNING"
-        return alerts
+    def check(self, live: pd.DataFrame) -> Dict[str, float]:
+        out: Dict[str, float] = {}
+        for col, baseline in self.baseline.items():
+            if col not in live:
+                continue
+            score = self.psi(baseline, live[col].to_numpy()[-8192:])
+            if score > self.psi_retrain:
+                out[col] = score
+        return out
+
+class PageHinkley:
+    def __init__(self, delta=0.005, threshold=50.0, alpha=0.999):
+        self.delta = delta
+        self.threshold = threshold
+        self.alpha = alpha
+        self.mean = 0.0
+        self.cum = 0.0
+        self.min_cum = 0.0
+        self.n = 0
+
+    def update(self, x: float) -> bool:
+        self.n += 1
+        self.mean += (x - self.mean) / self.n
+        self.cum = self.alpha * self.cum + x - self.mean - self.delta
+        self.min_cum = min(self.min_cum, self.cum)
+        return (self.cum - self.min_cum) > self.threshold

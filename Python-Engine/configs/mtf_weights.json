@@ -1,0 +1,11 @@
+{
+  "status": "development-default",
+  "default_weights": [0.55, 0.2, 0.15, 0.1],
+  "groups": {},
+  "policy": {
+    "coherence_warn": 0.67,
+    "coherence_block": 0.34,
+    "threshold_add_warn": 0.03,
+    "threshold_add_block": 0.08
+  }
+}

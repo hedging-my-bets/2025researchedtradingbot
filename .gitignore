@@ -1,0 +1,42 @@
+# Secrets / local environment
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+secrets/
+credentials/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# MT5 generated/runtime
+*.ex5
+MT5-Platform/MQL5/Files/FXSuite/*.ndjson
+MT5-Platform/MQL5/Logs/
+MT5-Platform/MQL5/Profiles/
+MT5-Platform/MQL5/Tester/
+
+# Models and large generated artifacts
+*.h5
+*.onnx
+*.joblib
+*.pkl
+Python-Engine/artifacts/
+Python-Engine/reports/
+
+# IDE/local assistant state
+.claude/settings.local.json
+.vscode/
+.idea/
+
+# Local live arming state
+MT5-Platform/MQL5/Files/FXSuite/live_approval.json
+release_fingerprint.json
+MT5-Platform/MQL5/Files/FXSuite/live_approval.csv\n

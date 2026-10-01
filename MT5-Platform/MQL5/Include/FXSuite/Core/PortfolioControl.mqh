@@ -1,116 +1,371 @@
-// FXSuite/Core/PortfolioControl.mqh
 #property strict
 
-class CPortfolioControl {
-private:
-   double m_max_portfolio_heat_pct;   // e.g., 0.06 = 6% total risk
-   double m_daily_loss_limit_pct;     // e.g., 0.03 = 3% equity daily
-   int    m_max_positions;            // e.g., 12
-   datetime m_trading_day;
+enum ENUM_FXS_RISK_STATE
+{
+   FXS_RISK_NORMAL=0,
+   FXS_RISK_SOFT_HALT=1,
+   FXS_RISK_HARD_HALT=2
+};
 
-   double m_equity_day_start;
+class CPortfolioControl
+{
+private:
+   double   m_max_heat;
+   double   m_daily_limit;
+   double   m_weekly_limit;
+   double   m_peak_limit;
+   double   m_soft_fraction;
+   double   m_max_margin_to_equity;
+   int      m_max_positions;
+   bool     m_omega_policy;
+
+   datetime m_day;
+   datetime m_week;
+   double   m_day_start_eq;
+   double   m_week_start_eq;
+   double   m_peak_eq;
+
+   string   m_state_path;
+   datetime m_last_persist;
+
+   static datetime DayStart(const datetime t)
+   {
+      MqlDateTime dt;
+      TimeToStruct(t,dt);
+      dt.hour=0;
+      dt.min=0;
+      dt.sec=0;
+      return StructToTime(dt);
+   }
+
+   static datetime WeekStart(const datetime t)
+   {
+      MqlDateTime dt;
+      TimeToStruct(t,dt);
+      int back=(dt.day_of_week==0 ? 6 : dt.day_of_week-1);
+      return DayStart(t)-back*86400;
+   }
+
+   bool LoadState()
+   {
+      int h=FileOpen(m_state_path,FILE_READ|FILE_CSV|FILE_ANSI);
+      if(h==INVALID_HANDLE) return false;
+
+      for(int i=0;i<5 && !FileIsEnding(h);++i) FileReadString(h);
+      string day_s=FileReadString(h);
+      string week_s=FileReadString(h);
+      string day_eq_s=FileReadString(h);
+      string week_eq_s=FileReadString(h);
+      string peak_s=FileReadString(h);
+      FileClose(h);
+
+      if(day_s=="" || week_s=="" || day_eq_s=="" || week_eq_s=="" || peak_s=="")
+         return false;
+
+      m_day=(datetime)StringToInteger(day_s);
+      m_week=(datetime)StringToInteger(week_s);
+      m_day_start_eq=StringToDouble(day_eq_s);
+      m_week_start_eq=StringToDouble(week_eq_s);
+      m_peak_eq=StringToDouble(peak_s);
+
+      return (m_day_start_eq>0.0 && m_week_start_eq>0.0 && m_peak_eq>0.0);
+   }
+
+   bool PersistState()
+   {
+      int h=FileOpen(m_state_path,FILE_WRITE|FILE_CSV|FILE_ANSI);
+      if(h==INVALID_HANDLE) return false;
+
+      FileWrite(h,"day","week","day_start_eq","week_start_eq","peak_eq");
+      FileWrite(h,
+                (long)m_day,
+                (long)m_week,
+                DoubleToString(m_day_start_eq,8),
+                DoubleToString(m_week_start_eq,8),
+                DoubleToString(m_peak_eq,8));
+      FileFlush(h);
+      FileClose(h);
+      m_last_persist=TimeCurrent();
+      return true;
+   }
+
+   static double PositionRiskPct(const string symbol,
+                                 const double entry,
+                                 const double sl,
+                                 const double lots)
+   {
+      if(sl<=0.0 || lots<=0.0) return 0.0;
+
+      double eq=AccountInfoDouble(ACCOUNT_EQUITY);
+      double tick_value=SymbolInfoDouble(symbol,SYMBOL_TRADE_TICK_VALUE);
+      double tick_size=SymbolInfoDouble(symbol,SYMBOL_TRADE_TICK_SIZE);
+
+      if(eq<=0.0 || tick_value<=0.0 || tick_size<=0.0) return 0.0;
+
+      double risk_money=(MathAbs(entry-sl)/tick_size)*tick_value*lots;
+      return risk_money/eq;
+   }
 
 public:
-   CPortfolioControl()
-   : m_max_portfolio_heat_pct(0.06),
-     m_daily_loss_limit_pct(0.03),
-     m_max_positions(12),
-     m_trading_day(0),
-     m_equity_day_start(0.0)
+   CPortfolioControl():
+      m_max_heat(0.06),
+      m_daily_limit(0.03),
+      m_weekly_limit(0.07),
+      m_peak_limit(0.12),
+      m_soft_fraction(0.70),
+      m_max_margin_to_equity(0.06),
+      m_max_positions(12),
+      m_omega_policy(false),
+      m_day(0),
+      m_week(0),
+      m_day_start_eq(0.0),
+      m_week_start_eq(0.0),
+      m_peak_eq(0.0),
+      m_state_path("FXSuite\\portfolio_risk_state.csv"),
+      m_last_persist(0)
    {}
 
-   void Configure(const double heat, const double daily_loss, const int max_pos)
+   void ConfigureStatePath(const string path)
    {
-      m_max_portfolio_heat_pct = heat;
-      m_daily_loss_limit_pct   = daily_loss;
-      m_max_positions          = max_pos;
+      if(path!="") m_state_path=path;
+   }
+
+   void ConfigureMarginHeat(const double max_margin_to_equity)
+   {
+      if(max_margin_to_equity>0.0)
+         m_max_margin_to_equity=max_margin_to_equity;
+   }
+
+   double MaxMarginToEquity() const
+   {
+      return m_max_margin_to_equity;
+   }
+
+   // LEGACY_BEHAVIOR: daily breaker + position/heat caps only.
+   void Configure(const double heat,const double daily_loss,const int max_positions)
+   {
+      m_max_heat=heat;
+      m_daily_limit=daily_loss;
+      m_max_positions=max_positions;
+      m_omega_policy=false;
+   }
+
+   // NEW_BEHAVIOR: optional day/week/peak state machine.
+   void ConfigureOmega(const double heat,
+                       const double daily_loss,
+                       const double weekly_loss,
+                       const double peak_loss,
+                       const int max_positions,
+                       const double soft_fraction)
+   {
+      m_max_heat=heat;
+      m_daily_limit=daily_loss;
+      m_weekly_limit=weekly_loss;
+      m_peak_limit=peak_loss;
+      m_max_positions=max_positions;
+      m_soft_fraction=MathMax(0.10,MathMin(0.95,soft_fraction));
+      m_omega_policy=true;
    }
 
    void OnStartup()
    {
-      m_trading_day = DateOfDay(TimeCurrent());
-      m_equity_day_start = AccountInfoDouble(ACCOUNT_EQUITY);
+      datetime now=TimeCurrent();
+      datetime today=DayStart(now);
+      datetime this_week=WeekStart(now);
+      double eq=AccountInfoDouble(ACCOUNT_EQUITY);
+
+      bool loaded=LoadState();
+      if(!loaded)
+      {
+         m_day=today;
+         m_week=this_week;
+         m_day_start_eq=eq;
+         m_week_start_eq=eq;
+         m_peak_eq=eq;
+      }
+      else
+      {
+         if(m_day!=today)
+         {
+            m_day=today;
+            m_day_start_eq=eq;
+         }
+         if(m_week!=this_week)
+         {
+            m_week=this_week;
+            m_week_start_eq=eq;
+         }
+         if(m_peak_eq<=0.0) m_peak_eq=eq;
+         if(eq>m_peak_eq) m_peak_eq=eq;
+      }
+
+      PersistState();
    }
 
    void OnHeartbeat()
    {
-      datetime d = DateOfDay(TimeCurrent());
-      if(d != m_trading_day){
-         m_trading_day = d;
-         m_equity_day_start = AccountInfoDouble(ACCOUNT_EQUITY);
+      datetime now=TimeCurrent();
+      datetime today=DayStart(now);
+      datetime this_week=WeekStart(now);
+      double eq=AccountInfoDouble(ACCOUNT_EQUITY);
+      bool changed=false;
+
+      if(today!=m_day)
+      {
+         m_day=today;
+         m_day_start_eq=eq;
+         changed=true;
       }
+
+      if(this_week!=m_week)
+      {
+         m_week=this_week;
+         m_week_start_eq=eq;
+         changed=true;
+      }
+
+      if(eq>m_peak_eq)
+      {
+         m_peak_eq=eq;
+         changed=true;
+      }
+
+      if(changed || m_last_persist==0 || now-m_last_persist>=60)
+         PersistState();
    }
 
-   bool CircuitBreakerTriggered(string &reason_out)
+   void Drawdowns(double &day_dd,double &week_dd,double &peak_dd) const
    {
-      double eq = AccountInfoDouble(ACCOUNT_EQUITY);
-      if(m_equity_day_start<=0.0) return false;
-      double dd = (m_equity_day_start - eq) / m_equity_day_start;
-      if(dd >= m_daily_loss_limit_pct){
-         reason_out = StringFormat("Daily loss %.2f%% >= limit %.2f%%",
-                        dd*100.0, m_daily_loss_limit_pct*100.0);
-         return true;
-      }
-      return false;
+      double eq=AccountInfoDouble(ACCOUNT_EQUITY);
+      day_dd=(m_day_start_eq>0.0 ? MathMax(0.0,(m_day_start_eq-eq)/m_day_start_eq) : 0.0);
+      week_dd=(m_week_start_eq>0.0 ? MathMax(0.0,(m_week_start_eq-eq)/m_week_start_eq) : 0.0);
+      peak_dd=(m_peak_eq>0.0 ? MathMax(0.0,(m_peak_eq-eq)/m_peak_eq) : 0.0);
    }
 
-   bool CanOpenNewPosition(const string symbol, const double risk_pct_per_trade, string &reason_out)
+   ENUM_FXS_RISK_STATE State(string &reason) const
    {
-      // 1) position count
-      if(PositionsTotal() >= m_max_positions){
-         reason_out="Max positions reached";
-         return false;
+      double d,w,p;
+      Drawdowns(d,w,p);
+
+      if(d>=m_daily_limit)
+      {
+         reason=StringFormat("daily_dd %.2f%% >= %.2f%%",d*100.0,m_daily_limit*100.0);
+         return FXS_RISK_HARD_HALT;
       }
-      // 2) current portfolio heat (approximate: open positions * their initial risk)
-      double current_heat=0.0;
-      for(int i=0;i<PositionsTotal();i++){
-         if(PositionGetSymbol(i)){
-            string s = PositionGetString(POSITION_SYMBOL);
-            double sl = PositionGetDouble(POSITION_SL);
-            double price = PositionGetDouble(POSITION_PRICE_OPEN);
-            double vol = PositionGetDouble(POSITION_VOLUME);
-            int type = (int)PositionGetInteger(POSITION_TYPE);
-            if(sl>0.0){
-               double risk = RiskOfPositionPct(s, (ENUM_POSITION_TYPE)type, price, sl, vol);
-               current_heat += risk;
-            }
+
+      if(m_omega_policy)
+      {
+         if(w>=m_weekly_limit)
+         {
+            reason=StringFormat("weekly_dd %.2f%% >= %.2f%%",w*100.0,m_weekly_limit*100.0);
+            return FXS_RISK_HARD_HALT;
+         }
+
+         if(p>=m_peak_limit)
+         {
+            reason=StringFormat("peak_dd %.2f%% >= %.2f%%",p*100.0,m_peak_limit*100.0);
+            return FXS_RISK_HARD_HALT;
+         }
+
+         if(d>=m_daily_limit*m_soft_fraction ||
+            w>=m_weekly_limit*m_soft_fraction ||
+            p>=m_peak_limit*m_soft_fraction)
+         {
+            reason="drawdown soft-halt threshold reached";
+            return FXS_RISK_SOFT_HALT;
          }
       }
-      double after = current_heat + risk_pct_per_trade;
-      if(after > m_max_portfolio_heat_pct){
-         reason_out = StringFormat("Portfolio heat %.2f%% > max %.2f%%",
-                        after*100.0, m_max_portfolio_heat_pct*100.0);
+
+      reason="normal";
+      return FXS_RISK_NORMAL;
+   }
+
+   double SizeMultiplier() const
+   {
+      string reason;
+      ENUM_FXS_RISK_STATE s=State(reason);
+      if(s==FXS_RISK_HARD_HALT) return 0.0;
+      if(s==FXS_RISK_SOFT_HALT) return 0.50;
+      return 1.0;
+   }
+
+   bool CircuitBreakerTriggered(string &reason_out) const
+   {
+      return (State(reason_out)==FXS_RISK_HARD_HALT);
+   }
+
+   double CurrentOpenRiskPct() const
+   {
+      double total=0.0;
+      for(int i=0;i<PositionsTotal();++i)
+      {
+         string sym=PositionGetSymbol(i);
+         if(sym=="") continue;
+
+         total+=PositionRiskPct(
+            sym,
+            PositionGetDouble(POSITION_PRICE_OPEN),
+            PositionGetDouble(POSITION_SL),
+            PositionGetDouble(POSITION_VOLUME)
+         );
+      }
+      return total;
+   }
+
+   bool CanOpenNewPosition(const string symbol,
+                           const double proposed_risk_pct,
+                           string &reason_out) const
+   {
+      if(PositionsTotal()>=m_max_positions)
+      {
+         reason_out="max positions reached";
          return false;
       }
+
+      string state_reason;
+      if(State(state_reason)==FXS_RISK_HARD_HALT)
+      {
+         reason_out=state_reason;
+         return false;
+      }
+
+      double after=CurrentOpenRiskPct()+MathMax(0.0,proposed_risk_pct);
+      if(after>m_max_heat)
+      {
+         reason_out=StringFormat("risk heat %.2f%% > cap %.2f%%",
+                                 after*100.0,m_max_heat*100.0);
+         return false;
+      }
+
       return true;
    }
 
-private:
-   static datetime DateOfDay(const datetime t)
+   bool CanOpenNewPositionProjected(const string symbol,
+                                    const ENUM_ORDER_TYPE side,
+                                    const double lots,
+                                    const double price,
+                                    const double proposed_risk_pct,
+                                    string &reason_out) const
    {
-      MqlDateTime dt; TimeToStruct(t, dt);
-      dt.hour=0; dt.min=0; dt.sec=0;
-      return StructToTime(dt);
-   }
+      if(!CanOpenNewPosition(symbol,proposed_risk_pct,reason_out))
+         return false;
 
-   static double PipFactor(const string sym)
-   {
-      double pt = SymbolInfoDouble(sym, SYMBOL_POINT);
-      int dg = (int)SymbolInfoInteger(sym, SYMBOL_DIGITS);
-      return (dg==3 || dg==5) ? pt*10.0 : pt;
-   }
+      double eq=AccountInfoDouble(ACCOUNT_EQUITY);
+      double margin=0.0;
+      if(eq<=0.0 || !OrderCalcMargin(side,symbol,lots,price,margin))
+      {
+         reason_out="unable to calculate projected margin";
+         return false;
+      }
 
-   static double RiskOfPositionPct(const string sym, ENUM_POSITION_TYPE type, double price, double sl, double lots)
-   {
-      double pip = PipFactor(sym);
-      double contract = SymbolInfoDouble(sym, SYMBOL_TRADE_TICK_VALUE) / SymbolInfoDouble(sym, SYMBOL_TRADE_TICK_SIZE);
-      double pips = 0.0;
-      if(type==POSITION_TYPE_BUY)  pips = (price - sl)/pip;
-      if(type==POSITION_TYPE_SELL) pips = (sl - price)/pip;
-      if(pips<0.0) pips=0.0;
-      double value_per_pip = lots * contract;
-      double risk_money = value_per_pip * pips;
-      double eq = AccountInfoDouble(ACCOUNT_EQUITY);
-      return (eq>0.0 ? risk_money/eq : 0.0);
+      double after_margin=(AccountInfoDouble(ACCOUNT_MARGIN)+margin)/eq;
+      if(after_margin>m_max_margin_to_equity)
+      {
+         reason_out=StringFormat("projected margin/equity %.2f%% > cap %.2f%%",
+                                 after_margin*100.0,m_max_margin_to_equity*100.0);
+         return false;
+      }
+
+      return true;
    }
 };

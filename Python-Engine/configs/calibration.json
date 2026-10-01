@@ -1,0 +1,7 @@
+{
+  "method": "identity",
+  "calibrator_id": "identity-v1",
+  "conformal_width": 0.0,
+  "status": "development-default",
+  "note": "Replace only with a fitted walk-forward calibration artifact."
+}

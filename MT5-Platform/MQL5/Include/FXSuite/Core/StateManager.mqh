@@ -1,72 +1,65 @@
-// FXSuite/Core/StateManager.mqh
 #property strict
 
-struct SignalState {
+struct SignalState
+{
    string   corr_id;
    string   symbol;
-   int      direction;   // +1 buy, -1 sell, 0 unknown
+   int      direction;
    datetime ts_sent;
-   ulong    order_ticket; // 0 until known
+   ulong    order_ticket;
    bool     filled;
 };
 
-class CStateManager {
+class CStateManager
+{
 private:
-   CArrayObj m_states;
+   SignalState m_states[];
 
-public:
-   CStateManager(){}
-
-   void RegisterSignal(const string corr_id, const string symbol, const int dir)
+   int FindByCorr(const string corr_id) const
    {
-      SignalState *st = new SignalState;
-      st.corr_id = corr_id; st.symbol = symbol; st.direction = dir;
-      st.ts_sent = TimeGMT(); st.order_ticket=0; st.filled=false;
-      m_states.Add(st);
+      for(int i=0;i<ArraySize(m_states);++i) if(m_states[i].corr_id==corr_id) return i;
+      return -1;
    }
 
-   void OnOrderPlaced(const string corr_id, const ulong ticket)
+public:
+   void RegisterSignal(const string corr_id,const string symbol,const int dir)
    {
-      for(int i=0;i<m_states.Total();i++){
-         SignalState *st = (SignalState*)m_states.At(i);
-         if(st.corr_id==corr_id){
-            st.order_ticket = ticket;
-            break;
-         }
-      }
+      if(FindByCorr(corr_id)>=0) return;
+      int n=ArraySize(m_states); ArrayResize(m_states,n+1);
+      m_states[n].corr_id=corr_id; m_states[n].symbol=symbol; m_states[n].direction=dir;
+      m_states[n].ts_sent=TimeGMT(); m_states[n].order_ticket=0; m_states[n].filled=false;
+   }
+
+   void OnOrderPlaced(const string corr_id,const ulong ticket)
+   {
+      int i=FindByCorr(corr_id);
+      if(i>=0) m_states[i].order_ticket=ticket;
    }
 
    void OnFill(const ulong ticket)
    {
-      for(int i=0;i<m_states.Total();i++){
-         SignalState *st = (SignalState*)m_states.At(i);
-         if(st.order_ticket==ticket){ st->filled=true; break; }
-      }
+      for(int i=0;i<ArraySize(m_states);++i)
+         if(m_states[i].order_ticket==ticket){ m_states[i].filled=true; return; }
    }
 
-   // basic reconciliation on startup: ensure we track live positions
    void Reconcile()
    {
-      for(int i=0;i<PositionsTotal();i++){
-         if(PositionGetSymbol(i)){
-            ulong pos_ticket = (ulong)PositionGetInteger(POSITION_TICKET);
-            string sym       = PositionGetString(POSITION_SYMBOL);
-            bool known=false;
-            for(int j=0;j<m_states.Total();j++){
-               SignalState *st = (SignalState*)m_states.At(j);
-               if(st.order_ticket==pos_ticket){ known=true; break; }
-            }
-            if(!known){
-               SignalState *st = new SignalState;
-               st.corr_id = StringFormat("RECOV-%s-%I64u", sym, pos_ticket);
-               st.symbol  = sym;
-               st.direction = (PositionGetInteger(POSITION_TYPE)==POSITION_TYPE_BUY ? 1 : -1);
-               st.ts_sent = TimeGMT();
-               st.order_ticket = pos_ticket;
-               st.filled = true;
-               m_states.Add(st);
-            }
-         }
+      for(int i=0;i<PositionsTotal();++i)
+      {
+         string sym=PositionGetSymbol(i); if(sym=="") continue;
+         ulong ticket=(ulong)PositionGetInteger(POSITION_TICKET);
+         bool known=false;
+         for(int j=0;j<ArraySize(m_states);++j)
+            if(m_states[j].order_ticket==ticket){ known=true; break; }
+         if(known) continue;
+
+         int n=ArraySize(m_states); ArrayResize(m_states,n+1);
+         m_states[n].corr_id=StringFormat("RECOV-%s-%I64u",sym,ticket);
+         m_states[n].symbol=sym;
+         m_states[n].direction=(PositionGetInteger(POSITION_TYPE)==POSITION_TYPE_BUY ? 1 : -1);
+         m_states[n].ts_sent=TimeGMT();
+         m_states[n].order_ticket=ticket;
+         m_states[n].filled=true;
       }
    }
 };

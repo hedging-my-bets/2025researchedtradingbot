@@ -1,0 +1,3 @@
+event_time_iso,currency,importance,event_name
+2030-01-04T13:30:00Z,USD,3,Example High Impact Event
+2030-01-04T14:00:00Z,EUR,2,Example Medium Impact Event

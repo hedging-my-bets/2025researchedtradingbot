@@ -1,59 +1,86 @@
-// FXSuite/Filters/NewsCalendar.mqh
 #property strict
 
 class CNewsCalendar
 {
 private:
-   string  m_path;
-   int     m_minImpact;     // 0=LOW,1=MEDIUM,2=HIGH
-   int     m_before_min;    // blackout minutes before event
-   int     m_after_min;     // blackout minutes after event
+   string m_path;
+   string m_status_path;
+   int m_min_impact;
+   int m_before_min;
+   int m_after_min;
+   bool m_fail_closed;
 
-   int ImpactLevel(const string impact) const
+   int ImpactLevel(string impact) const
    {
-      string u = StringUpper(impact);
-      if(StringFind(u,"HIGH")>=0)   return 2;
-      if(StringFind(u,"MED")>=0)    return 1;
-      if(StringFind(u,"LOW")>=0)    return 0;
-      return 0;
+      StringToUpper(impact);
+      if(StringFind(impact,"HIGH")>=0) return 2;
+      if(StringFind(impact,"MED")>=0) return 1;
+      if(StringFind(impact,"LOW")>=0) return 0;
+      return -1;
    }
 
-   bool CcyMatches(const string symbol, const string event_ccy) const
+   bool CurrencyMatches(const string symbol,string event_ccy) const
    {
-      if(event_ccy=="ALL") return true;
-      string base = StringSubstr(symbol,0,3);
-      string quote= StringSubstr(symbol,(int)StringLen(symbol)-3,3);
-      return (event_ccy==base || event_ccy==quote);
+      StringToUpper(event_ccy);
+      string base=StringSubstr(symbol,0,3);
+      string quote=StringSubstr(symbol,StringLen(symbol)-3,3);
+      StringToUpper(base);
+      StringToUpper(quote);
+      return (event_ccy=="ALL" || event_ccy==base || event_ccy==quote);
    }
 
 public:
-   CNewsCalendar(const string csv_path, const int min_impact, const int before_min, const int after_min)
-   : m_path(csv_path), m_minImpact(min_impact), m_before_min(before_min), m_after_min(after_min) {}
+   CNewsCalendar(const string csv_path="calendar.csv",const int min_impact=2,
+                 const int before_min=45,const int after_min=45,const bool fail_closed=false,
+                 const string status_path="news_status.csv"):
+      m_path(csv_path),m_status_path(status_path),m_min_impact(min_impact),
+      m_before_min(before_min),m_after_min(after_min),m_fail_closed(fail_closed){}
 
-   bool IsBlackout(const string symbol, const datetime now_utc) const
+   bool HealthOK(const datetime now_utc,const int max_age_sec,string &reason) const
    {
-      int h = FileOpen(m_path, FILE_READ|FILE_CSV|FILE_ANSI);
-      if(h==INVALID_HANDLE) return false;
+      int h=FileOpen(m_status_path,FILE_READ|FILE_CSV|FILE_ANSI);
+      if(h==INVALID_HANDLE){reason="news_status_missing";return false;}
 
-      // Assume header: utc_ts,impact,currency,title,...
-      for(int i=0;i<4 && !FileIsEnding(h); ++i) FileReadString(h);
+      for(int i=0;i<3 && !FileIsEnding(h);++i) FileReadString(h);
+      string generated_s=FileReadString(h);
+      string latest_s=FileReadString(h);
+      string count_s=FileReadString(h);
+      FileClose(h);
 
+      datetime generated=(datetime)StringToInteger(generated_s);
+      datetime latest=(datetime)StringToInteger(latest_s);
+      int count=(int)StringToInteger(count_s);
+
+      if(count<=0){reason="news_calendar_empty";return false;}
+      if(generated<=0){reason="news_status_invalid";return false;}
+      long age=(long)(now_utc-generated);
+      if(age<0) age=-age;
+      if(age>max_age_sec){reason="news_status_stale";return false;}
+      if(latest<now_utc){reason="news_calendar_no_future_coverage";return false;}
+
+      reason="ok";
+      return true;
+   }
+
+   bool IsBlackout(const string symbol,const datetime now_utc) const
+   {
+      int h=FileOpen(m_path,FILE_READ|FILE_CSV|FILE_ANSI);
+      if(h==INVALID_HANDLE) return m_fail_closed;
+
+      for(int i=0;i<4 && !FileIsEnding(h);++i) FileReadString(h);
       bool blocked=false;
-      while(!FileIsEnding(h)){
-         string ts_s   = FileReadString(h);
-         string imp    = FileReadString(h);
-         string ccy    = FileReadString(h);
-         string title  = FileReadString(h);
-
-         if(ts_s=="" || imp=="" || ccy==""){ continue; }
-         datetime ts = (datetime)StringToInteger(ts_s);
-         int lvl = ImpactLevel(imp);
-         if(lvl < m_minImpact) continue;
-         if(!CcyMatches(symbol, ccy)) continue;
-
-         datetime start_blk = ts - m_before_min*60;
-         datetime end_blk   = ts + m_after_min*60;
-         if(now_utc>=start_blk && now_utc<=end_blk){ blocked=true; break; }
+      while(!FileIsEnding(h))
+      {
+         string ts_s=FileReadString(h);
+         string impact=FileReadString(h);
+         string ccy=FileReadString(h);
+         string title=FileReadString(h);
+         if(ts_s=="" || impact=="" || ccy=="") continue;
+         int level=ImpactLevel(impact);
+         if(level<m_min_impact || !CurrencyMatches(symbol,ccy)) continue;
+         datetime ts=(datetime)StringToInteger(ts_s);
+         if(now_utc>=ts-m_before_min*60 && now_utc<=ts+m_after_min*60)
+         { blocked=true; break; }
       }
       FileClose(h);
       return blocked;

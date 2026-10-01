@@ -1,0 +1,30 @@
+name: FXSuite Quality
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+      - "omega/**"
+
+jobs:
+  python-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-test.txt
+      - run: pytest -q Python-Engine/tests
+      - run: python tools/verify_dependencies.py
+      - run: python tools/scan_secrets.py
+      - run: python tools/build_release_fingerprint.py --check
+
+  mql-not-compiled-here:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          echo "MQL source is syntax-reviewed only in this Linux workflow."
+          echo "Do not label 0 errors / 0 warnings VERIFIED until MetaEditor runs on Windows."

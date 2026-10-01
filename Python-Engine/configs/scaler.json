@@ -1,0 +1,325 @@
+{
+  "version": 1,
+  "features": {
+    "ret_1": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "ret_5": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "atr": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "bb_width_over_atr": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "bb_width": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "ema_regime": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "adx": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "rsi": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "cci": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "macd_main": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "macd_signal": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "macd_hist": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "stochastic_k": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "stochastic_d": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "spread_price": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "hour": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "day_of_week": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "session_id": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "bb_z": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "price_vs_ema20": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "intent_breakout": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "minutes_to_high_news": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "intent_trend": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "intent_squeeze": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "atr_relative": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "reserved_25": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "reserved_26": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "reserved_27": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "reserved_28": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "reserved_29": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "reserved_30": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "reserved_31": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "reserved_32": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "reserved_33": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "reserved_34": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "reserved_35": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "reserved_36": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "reserved_37": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "reserved_38": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "reserved_39": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "reserved_40": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "reserved_41": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "reserved_42": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "reserved_43": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "reserved_44": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "reserved_45": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "reserved_46": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "reserved_47": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "reserved_48": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "reserved_49": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "reserved_50": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "reserved_51": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "reserved_52": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "reserved_53": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "reserved_54": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "reserved_55": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "reserved_56": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "reserved_57": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "reserved_58": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "reserved_59": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "reserved_60": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "reserved_61": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "reserved_62": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    },
+    "reserved_63": {
+      "type": "numeric",
+      "mean": 0,
+      "std": 1
+    }
+  }
+}
