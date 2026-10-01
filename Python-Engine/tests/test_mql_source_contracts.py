@@ -70,3 +70,14 @@ def test_mtf_live_wiring_is_opt_in():
     assert "MTFVector" in src
     assert "ShouldBlock" in mtf
     assert "conformal_width=MathMax" in src
+
+def test_cost_gate_and_margin_heat_are_explicit():
+    src = EA.read_text(encoding="utf-8")
+    portfolio = (INC / "Core/PortfolioControl.mqh").read_text(encoding="utf-8")
+    cost = (INC / "Treasury/CostModel.mqh").read_text(encoding="utf-8")
+    assert "input bool InpEnableCostGate=false;" in src
+    assert "InpMaxAllInCostR" in src
+    assert "CCostModel::Estimate" in src
+    assert "ConfigureMarginHeat" in portfolio
+    assert "m_max_margin_to_equity" in portfolio
+    assert "OrderCalcProfit" in cost
