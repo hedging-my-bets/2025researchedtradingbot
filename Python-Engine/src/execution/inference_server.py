@@ -3,8 +3,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import time
 from pathlib import Path
+import sys
+import time
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -12,20 +13,33 @@ import yaml
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-ROOT = Path(__file__).resolve().parents[2]
-REPO_ROOT = ROOT.parent
-CONFIGS_DIR = ROOT / "configs"
+ENGINE_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = ENGINE_ROOT.parent
+SRC_DIR = ENGINE_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+from calibration.calibrators import CalibrationArtifact
+from execution.model_router import ModelRouter
+from features.registry import FeatureRegistry
+
+CONFIGS_DIR = ENGINE_ROOT / "configs"
 FILES_DIR = REPO_ROOT / "MT5-Platform" / "MQL5" / "Files"
 MODELS_DIR = FILES_DIR / "ML_Models"
+PAIR_MODEL_ROOT = Path(
+    os.getenv("PAIR_MODEL_ROOT", str(ENGINE_ROOT / "artifacts" / "live"))
+)
 
 FEATURES_YAML = CONFIGS_DIR / "features.yaml"
 SCALER_JSON = CONFIGS_DIR / "scaler.json"
+CALIBRATION_JSON = CONFIGS_DIR / "calibration.json"
 MODEL_ONNX = MODELS_DIR / "meta_labeler.onnx"
 MODEL_ID_FILE = MODELS_DIR / "model_id.txt"
 
 API_PORT = int(os.getenv("INFER_PORT", "8081"))
 API_HOST = os.getenv("INFER_HOST", "127.0.0.1")
 ALLOW_STUB_MODEL = os.getenv("ALLOW_STUB_MODEL", "0") == "1"
+REQUIRE_PAIR_MODEL = os.getenv("REQUIRE_PAIR_MODEL", "0") == "1"
 
 class InferRequest(BaseModel):
     correlation_id: str = Field(..., min_length=1)
@@ -42,6 +56,8 @@ class InferResponse(BaseModel):
     p_cal: float
     conformal_width: float
     model_id: str
+    calibrator_id: str
+    route: str
     features_version: str
     latency_ms: int
 
@@ -51,21 +67,20 @@ def _hash_files(*paths: Path) -> str:
         h.update(path.read_bytes())
     return h.hexdigest()[:16]
 
-def _load_features_spec() -> Dict[str, Any]:
-    spec = yaml.safe_load(FEATURES_YAML.read_text())
-    if "meta_features" not in spec:
-        raise RuntimeError("features.yaml missing meta_features")
-    if len(spec["meta_features"]) != 64:
-        raise RuntimeError("feature contract must contain exactly 64 features")
-    return spec
-
 def _load_scaler() -> Dict[str, Any]:
     return json.loads(SCALER_JSON.read_text())
 
-FEATURES_SPEC = _load_features_spec()
+FEATURES_SPEC = yaml.safe_load(FEATURES_YAML.read_text())
+FEATURE_REGISTRY = FeatureRegistry.load(FEATURES_YAML)
 SCALER_CFG = _load_scaler()
-FEATURE_ORDER = [x["name"] for x in FEATURES_SPEC["meta_features"]]
+FEATURE_ORDER = FEATURE_REGISTRY.names
 FEATURES_VERSION = _hash_files(FEATURES_YAML, SCALER_JSON)
+GLOBAL_CALIBRATION = CalibrationArtifact.load(CALIBRATION_JSON)
+ROUTER = ModelRouter(
+    PAIR_MODEL_ROOT,
+    features_path=FEATURES_YAML,
+    scaler_path=SCALER_JSON,
+)
 
 def _scale_vector(vec: np.ndarray) -> np.ndarray:
     out = vec.astype(np.float32).copy()
@@ -77,89 +92,126 @@ def _scale_vector(vec: np.ndarray) -> np.ndarray:
         out[i] = (out[i] - float(meta.get("mean", 0.0))) / std
     return out
 
-ORT_SESS = None
-ORT_INPUT = None
-ORT_OUTPUT = None
-MODEL_ID = MODEL_ONNX.stem
+GLOBAL_SESSION = None
+GLOBAL_INPUT = None
+GLOBAL_OUTPUT = None
+GLOBAL_MODEL_ID = MODEL_ONNX.stem
 
 if MODEL_ID_FILE.exists():
-    MODEL_ID = MODEL_ID_FILE.read_text().strip() or MODEL_ID
+    GLOBAL_MODEL_ID = MODEL_ID_FILE.read_text().strip() or GLOBAL_MODEL_ID
 
 if MODEL_ONNX.exists():
     import onnxruntime as ort
-    ORT_SESS = ort.InferenceSession(MODEL_ONNX.as_posix(), providers=["CPUExecutionProvider"])
-    ORT_INPUT = ORT_SESS.get_inputs()[0].name
-    ORT_OUTPUT = ORT_SESS.get_outputs()[0].name
+    GLOBAL_SESSION = ort.InferenceSession(
+        MODEL_ONNX.as_posix(), providers=["CPUExecutionProvider"]
+    )
+    GLOBAL_INPUT = GLOBAL_SESSION.get_inputs()[0].name
+    GLOBAL_OUTPUT = GLOBAL_SESSION.get_outputs()[0].name
 elif not ALLOW_STUB_MODEL:
-    MODEL_ID = "missing-model"
+    GLOBAL_MODEL_ID = "missing-model"
 
-app = FastAPI(title="FXSuite Inference Service", version="2.0.0")
+app = FastAPI(title="FXSuite Inference Service", version="3.0.0")
 
 @app.get("/health")
 def health() -> Dict[str, Any]:
+    routes = ROUTER.available_routes()
+    serving = bool(routes) or GLOBAL_SESSION is not None or ALLOW_STUB_MODEL
     return {
-        "status": "ok" if ORT_SESS is not None or ALLOW_STUB_MODEL else "degraded",
-        "model_loaded": ORT_SESS is not None,
-        "model_id": MODEL_ID,
+        "status": "ok" if serving else "degraded",
+        "pair_routes": routes,
+        "global_model_loaded": GLOBAL_SESSION is not None,
+        "global_model_id": GLOBAL_MODEL_ID,
+        "global_calibrator_id": GLOBAL_CALIBRATION.calibrator_id,
         "features_version": FEATURES_VERSION,
+        "registry_version": FEATURE_REGISTRY.registry_version,
+        "require_pair_model": REQUIRE_PAIR_MODEL,
     }
 
 @app.get("/version")
 def version() -> Dict[str, Any]:
     return {
-        "model_id": MODEL_ID,
+        "global_model_id": GLOBAL_MODEL_ID,
         "features_version": FEATURES_VERSION,
+        "registry_version": FEATURE_REGISTRY.registry_version,
         "n_features": len(FEATURE_ORDER),
+        "pair_routes": ROUTER.available_routes(),
     }
 
 def _vector(req: InferRequest) -> np.ndarray:
     if req.features is not None:
-        vec = np.asarray(req.features, dtype=np.float32)
-        if vec.shape != (64,):
-            raise HTTPException(400, f"Feature length {vec.shape[0]} != expected 64")
-        return vec
-    if req.feature_map is not None:
+        raw = req.features
+    elif req.feature_map is not None:
         missing = [name for name in FEATURE_ORDER if name not in req.feature_map]
         if missing:
             raise HTTPException(400, f"Missing feature(s): {missing[:5]}")
-        return np.asarray([req.feature_map[name] for name in FEATURE_ORDER], dtype=np.float32)
-    raise HTTPException(400, "Provide features or feature_map")
+        raw = [req.feature_map[name] for name in FEATURE_ORDER]
+    else:
+        raise HTTPException(400, "Provide features or feature_map")
 
-def _infer_prob(vec_scaled: np.ndarray) -> float:
-    if ORT_SESS is None:
+    try:
+        clean = FEATURE_REGISTRY.sanitize(raw)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return np.asarray(clean, dtype=np.float32)
+
+def _global_infer(vec_scaled: np.ndarray) -> float:
+    if GLOBAL_SESSION is None:
         if not ALLOW_STUB_MODEL:
-            raise HTTPException(503, "Production ONNX model is not installed")
+            raise HTTPException(503, "No production model is available")
         return 0.5
-    result = ORT_SESS.run([ORT_OUTPUT], {ORT_INPUT: vec_scaled.reshape(1, -1)})[0]
+
+    result = GLOBAL_SESSION.run(
+        [GLOBAL_OUTPUT],
+        {GLOBAL_INPUT: vec_scaled.reshape(1, -1).astype(np.float32)},
+    )[0]
     if isinstance(result, list) and result and isinstance(result[0], dict):
         row = result[0]
         return float(row.get(1, row.get("1", 0.5)))
-    arr = np.asarray(result)
-    return float(arr.ravel()[-1])
-
-def _calibrate(p_raw: float) -> tuple[float, float]:
-    # Safe default until pair/regime calibrators are installed.
-    p_cal = float(np.clip(p_raw, 0.0, 1.0))
-    width = 0.0
-    return p_cal, width
+    return float(np.asarray(result).ravel()[-1])
 
 @app.post("/infer", response_model=InferResponse)
 def infer(req: InferRequest) -> InferResponse:
     t0 = time.perf_counter_ns()
-    if req.client_features_version != int(FEATURES_SPEC.get("features_version", 1)):
-        raise HTTPException(409, "client feature-version does not match server feature contract")
+
+    if req.client_features_version != FEATURE_REGISTRY.version:
+        raise HTTPException(
+            409,
+            f"client feature-version {req.client_features_version} "
+            f"!= server {FEATURE_REGISTRY.version}",
+        )
 
     vec = _scale_vector(_vector(req))
-    p_raw = float(np.clip(_infer_prob(vec), 0.0, 1.0))
-    p_cal, width = _calibrate(p_raw)
+    tf_key = str(req.timeframe)
+    routed = None
+    if req.symbol and req.timeframe:
+        try:
+            routed = ROUTER.predict(req.symbol, tf_key, vec)
+        except (ValueError, RuntimeError) as exc:
+            raise HTTPException(503, f"pair model invalid: {exc}") from exc
+
+    if routed is not None:
+        p_raw, p_cal, width, model_id, calibrator_id = routed
+        route = f"{req.symbol.upper()}/{tf_key}"
+    else:
+        if REQUIRE_PAIR_MODEL:
+            raise HTTPException(
+                503, f"required pair model missing for {req.symbol}/{tf_key}"
+            )
+        p_raw = float(np.clip(_global_infer(vec), 0.0, 1.0))
+        p_cal, width = GLOBAL_CALIBRATION.transform(p_raw)
+        model_id = GLOBAL_MODEL_ID
+        calibrator_id = GLOBAL_CALIBRATION.calibrator_id
+        route = "global-fallback"
 
     return InferResponse(
         correlation_id=req.correlation_id,
         ok=True,
-        p_win=p_raw,
-        p_cal=p_cal,
-        conformal_width=width,
-        model_id=MODEL_ID,
+        p_win=float(p_raw),
+        p_cal=float(p_cal),
+        conformal_width=float(width),
+        model_id=model_id,
+        calibrator_id=calibrator_id,
+        route=route,
         features_version=FEATURES_VERSION,
         latency_ms=int((time.perf_counter_ns() - t0) / 1_000_000),
     )
