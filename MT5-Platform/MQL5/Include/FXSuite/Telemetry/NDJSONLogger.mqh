@@ -151,4 +151,16 @@ public:
          Esc(symbol),spread_money,commission_money,slippage_money,swap_money,
          total_money,cost_r,swap_supported?"true":"false"));
    }
+   bool ExecutionGuard(const string symbol,
+                       const bool blocked,
+                       const string reason,
+                       const double spread_pips,
+                       const double spread_limit_pips,
+                       const double slippage_budget_pips) const
+   {
+      return Event("execution_guard",StringFormat(
+         "\"symbol\":\"%s\",\"blocked\":%s,\"reason\":\"%s\",\"spread_pips\":%.6f,\"spread_limit_pips\":%.6f,\"slippage_budget_pips\":%.6f",
+         Esc(symbol),blocked?"true":"false",Esc(reason),spread_pips,
+         spread_limit_pips,slippage_budget_pips));
+   }
 };
