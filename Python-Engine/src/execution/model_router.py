@@ -11,6 +11,20 @@ from ml_pipeline.model_registry import sha256_file
 
 _SAFE = re.compile(r"^[A-Za-z0-9._-]+$")
 
+MQL_TIMEFRAME_KEYS = {
+    15: "M15",
+    16385: "H1",
+    16388: "H4",
+    16408: "D1",
+}
+
+def timeframe_key(value: int | str) -> str:
+    try:
+        numeric = int(value)
+    except (TypeError, ValueError):
+        return _safe_part(str(value).upper(), "timeframe")
+    return MQL_TIMEFRAME_KEYS.get(numeric, str(numeric))
+
 class ArtifactValidationError(RuntimeError):
     pass
 
