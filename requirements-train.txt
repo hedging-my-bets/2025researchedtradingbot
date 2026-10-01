@@ -1,0 +1,5 @@
+-r requirements-test.txt
+lightgbm>=4.0
+onnx>=1.16
+onnxmltools>=1.12
+onnxconverter-common>=1.14
