@@ -87,3 +87,12 @@ def test_build_fingerprint_is_not_self_referential():
     assert '"BuildFingerprint.mqh"' in tool
     assert "EXCLUDED_NAMES" in tool
     assert "artifacts" in tool and "meta_labeler.onnx" in tool
+
+def test_execution_budget_is_explicit_and_default_off():
+    src = EA.read_text(encoding="utf-8")
+    order = (INC / "Core/OrderManager.mqh").read_text(encoding="utf-8")
+    logger = (INC / "Telemetry/NDJSONLogger.mqh").read_text(encoding="utf-8")
+    assert "input bool InpEnableExecutionBudget=false;" in src
+    assert "InpMaxSpreadPips" in src and "InpSlippageBudgetPips" in src
+    assert "ConfigureRetry" in src and "RetryableCode" in order
+    assert '"execution_guard"' in logger
