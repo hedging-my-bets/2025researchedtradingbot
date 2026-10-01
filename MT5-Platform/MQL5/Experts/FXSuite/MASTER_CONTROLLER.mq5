@@ -17,6 +17,7 @@
 #include <FXSuite/Risk/CVaRTracker.mqh>
 #include <FXSuite/Risk/DynamicSizer.mqh>
 #include <FXSuite/Position/ProfitProtector.mqh>
+#include <FXSuite/Treasury/CostModel.mqh>
 #include <FXSuite/Telemetry/NDJSONLogger.mqh>
 
 input ENUM_TIMEFRAMES InpTF=PERIOD_M15;
@@ -35,10 +36,20 @@ input double InpWeeklyLossLimit=0.07;
 input double InpPeakLossLimit=0.12;
 input double InpSoftHaltFraction=0.70;
 input int InpMaxPositions=12;
+// 0 preserves the current legacy-conservative behavior of reusing portfolio heat.
+input double InpMaxMarginToEquity=0.0;
 
 input bool InpEnableOmegaSizer=false;
 input double InpKellyMax=0.15;
 input double InpCVaRLimitR=1.50;
+
+// NEW_BEHAVIOR treasury/cost gate. Default off.
+input bool InpEnableCostGate=false;
+input double InpMaxAllInCostR=0.15;
+input double InpExpectedSlippagePips=0.20;
+input double InpRoundTripCommissionPerLot=0.0;
+input int InpExpectedHoldNights=0;
+input bool InpCostRequireKnownSwap=false;
 
 input double InpBE_TriggerPctEquity=0.0;
 input double InpBE_TriggerR=1.0;
@@ -285,6 +296,9 @@ int OnInit()
    else
       g_port.Configure(InpMaxPortfolioHeat,InpDailyLossLimit,InpMaxPositions);
 
+   if(InpMaxMarginToEquity>0.0)
+      g_port.ConfigureMarginHeat(InpMaxMarginToEquity);
+
    g_port.OnStartup();
    g_state.Reconcile();
    g_cvar.Load(g_cvar_path);
@@ -511,6 +525,58 @@ void OnTimer()
 
    double lots=base_lots*rp.lot_mult*size_mult;
    if(!g_om.NormalizeVolumeDown(_Symbol,lots)) return;
+
+   FXSCostEstimate cost_estimate;
+   if(CCostModel::Estimate(_Symbol,side,lots,
+                           InpExpectedSlippagePips,
+                           InpRoundTripCommissionPerLot,
+                           InpExpectedHoldNights,
+                           cost_estimate))
+   {
+      double actual_risk_money=CCostModel::RiskMoney(_Symbol,entry,sl,lots);
+      double cost_r=(actual_risk_money>0.0 ?
+                     cost_estimate.total_cost_money/actual_risk_money : 0.0);
+
+      g_log.CostEstimate(_Symbol,
+                         cost_estimate.spread_money,
+                         cost_estimate.commission_money,
+                         cost_estimate.slippage_money,
+                         cost_estimate.swap_money,
+                         cost_estimate.total_cost_money,
+                         cost_r,
+                         cost_estimate.swap_supported);
+
+      if(InpEnableCostGate)
+      {
+         if(InpCostRequireKnownSwap &&
+            InpExpectedHoldNights>0 &&
+            !cost_estimate.swap_supported)
+         {
+            Comment("Cost gate: unsupported broker swap mode");
+            return;
+         }
+
+         if(cost_r>InpMaxAllInCostR)
+         {
+            Comment(StringFormat("Cost gate: %.3fR > %.3fR",
+                                 cost_r,InpMaxAllInCostR));
+            return;
+         }
+
+         double cost_breakeven=(1.0+cost_r)/(1.0+rr);
+         if(p_eff<MathMax(threshold,cost_breakeven))
+         {
+            Comment(StringFormat("Cost-adjusted EV gate: p=%.3f breakeven=%.3f",
+                                 p_eff,cost_breakeven));
+            return;
+         }
+      }
+   }
+   else if(InpEnableCostGate)
+   {
+      Comment("Cost gate: unable to estimate transaction costs");
+      return;
+   }
 
    string block_reason;
    if(!g_port.CanOpenNewPositionProjected(_Symbol,side,lots,entry,
