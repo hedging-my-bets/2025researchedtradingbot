@@ -53,3 +53,11 @@ def test_restart_cvar_and_signed_beta_contracts():
     assert "cvar_history.csv" in master
     assert "-beta*corr" not in hedge.replace(" ", "")
     assert "return ClampRatio(-beta,max_ratio);" in hedge
+
+def test_live_approval_is_wired_but_legacy_off():
+    src = EA.read_text(encoding="utf-8")
+    fp = (INC / "Core/BuildFingerprint.mqh").read_text(encoding="utf-8")
+    assert "input bool InpRequireLiveApproval=false;" in src
+    assert "LiveApprovalOK" in src
+    assert "live_approval.csv" in src
+    assert 'FXSUITE_BUILD_FINGERPRINT "UNARMED"' in fp

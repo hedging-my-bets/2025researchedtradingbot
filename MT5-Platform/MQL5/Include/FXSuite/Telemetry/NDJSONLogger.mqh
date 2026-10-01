@@ -131,4 +131,10 @@ public:
          "\"symbol\":\"%s\",\"deal\":%I64u,\"position_id\":%I64u,\"price\":%.10f,\"volume\":%.8f,\"gross_profit\":%.8f,\"commission\":%.8f,\"swap\":%.8f,\"net_pnl\":%.8f",
          Esc(symbol),deal,position_id,price,volume,gross_profit,commission,swap,net_pnl));
    }
+   bool LiveGuard(const bool blocked,const string reason,const string fingerprint) const
+   {
+      return Event("live_guard",StringFormat(
+         "\"blocked\":%s,\"reason\":\"%s\",\"fingerprint\":\"%s\"",
+         blocked?"true":"false",Esc(reason),Esc(fingerprint)));
+   }
 };
