@@ -34,3 +34,12 @@ def test_required_audit_event_families_exist():
         "trade_close","mtf_vector",
     ]:
         assert f'"{event}"' in src
+
+def test_restart_safety_guards_are_present():
+    src = EA.read_text(encoding="utf-8")
+    portfolio = (INC / "Core/PortfolioControl.mqh").read_text(encoding="utf-8")
+    assert 'FolderCreate("FXSuite")' in src
+    assert "GlobalVariableSet(g_bar_key" in src
+    assert "portfolio_risk_state.csv" in portfolio
+    assert "LoadState()" in portfolio
+    assert "PersistState()" in portfolio

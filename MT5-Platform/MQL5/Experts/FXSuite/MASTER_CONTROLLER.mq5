@@ -77,7 +77,7 @@ int g_ema50h=INVALID_HANDLE;
 int g_ema200h=INVALID_HANDLE;
 datetime g_last_bar=0;
 int g_last_risk_state=-1;
-datetime g_last_risk_log=0;
+datetime g_last_risk_log=0;\nstring g_bar_key="";
 
 double PipValue()
 {
