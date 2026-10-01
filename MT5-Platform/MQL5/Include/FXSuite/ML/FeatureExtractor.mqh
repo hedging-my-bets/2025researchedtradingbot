@@ -22,6 +22,20 @@ public:
       m_ma50_h(INVALID_HANDLE),m_ma200_h(INVALID_HANDLE),m_adx_h(INVALID_HANDLE),
       m_rsi_h(INVALID_HANDLE),m_cci_h(INVALID_HANDLE),m_macd_h(INVALID_HANDLE),m_sto_h(INVALID_HANDLE){}
 
+   ~CFeatureExtractor()
+   {
+      if(m_atr_h!=INVALID_HANDLE)   IndicatorRelease(m_atr_h);
+      if(m_bb_h!=INVALID_HANDLE)    IndicatorRelease(m_bb_h);
+      if(m_ma20_h!=INVALID_HANDLE)  IndicatorRelease(m_ma20_h);
+      if(m_ma50_h!=INVALID_HANDLE)  IndicatorRelease(m_ma50_h);
+      if(m_ma200_h!=INVALID_HANDLE) IndicatorRelease(m_ma200_h);
+      if(m_adx_h!=INVALID_HANDLE)   IndicatorRelease(m_adx_h);
+      if(m_rsi_h!=INVALID_HANDLE)   IndicatorRelease(m_rsi_h);
+      if(m_cci_h!=INVALID_HANDLE)   IndicatorRelease(m_cci_h);
+      if(m_macd_h!=INVALID_HANDLE)  IndicatorRelease(m_macd_h);
+      if(m_sto_h!=INVALID_HANDLE)   IndicatorRelease(m_sto_h);
+   }
+
    bool Init()
    {
       m_atr_h=iATR(m_symbol,m_tf,14);
