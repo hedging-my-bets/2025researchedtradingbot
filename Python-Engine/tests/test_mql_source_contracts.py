@@ -43,3 +43,13 @@ def test_restart_safety_guards_are_present():
     assert "portfolio_risk_state.csv" in portfolio
     assert "LoadState()" in portfolio
     assert "PersistState()" in portfolio
+
+def test_restart_cvar_and_signed_beta_contracts():
+    cvar = (INC / "Risk/CVaRTracker.mqh").read_text(encoding="utf-8")
+    hedge = (INC / "Portfolio/NetHedge.mqh").read_text(encoding="utf-8")
+    master = EA.read_text(encoding="utf-8")
+    assert "bool Load(" in cvar
+    assert "bool Save(" in cvar
+    assert "cvar_history.csv" in master
+    assert "-beta*corr" not in hedge.replace(" ", "")
+    assert "return ClampRatio(-beta,max_ratio);" in hedge
