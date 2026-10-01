@@ -81,3 +81,9 @@ def test_cost_gate_and_margin_heat_are_explicit():
     assert "ConfigureMarginHeat" in portfolio
     assert "m_max_margin_to_equity" in portfolio
     assert "OrderCalcProfit" in cost
+
+def test_build_fingerprint_is_not_self_referential():
+    tool = (ROOT / "tools/build_release_fingerprint.py").read_text(encoding="utf-8")
+    assert '"BuildFingerprint.mqh"' in tool
+    assert "EXCLUDED_NAMES" in tool
+    assert "artifacts" in tool and "meta_labeler.onnx" in tool
