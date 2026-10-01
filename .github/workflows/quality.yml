@@ -1,0 +1,40 @@
+name: FXSuite Quality
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+      - "omega/**"
+
+jobs:
+  python-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-test.txt
+      - run: pytest -q Python-Engine/tests/test_contracts.py
+      - run: python tools/verify_dependencies.py
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fail on obvious hard-coded API keys
+        shell: bash
+        run: |
+          if grep -RIE --exclude-dir=.git --exclude='*.md' '(api_key|token|secret)[[:space:]]*=[[:space:]]*["'\'''][A-Za-z0-9_-]{16,}' .; then
+            echo "Potential hard-coded credential found"
+            exit 1
+          fi
+
+  mql-not-compiled-here:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          echo "MQL source is syntax-reviewed only in this Linux workflow."
+          echo "Do not label 0 errors / 0 warnings VERIFIED until MetaEditor runs on Windows."
