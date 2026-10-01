@@ -20,7 +20,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from calibration.calibrators import CalibrationArtifact
-from execution.model_router import ModelRouter
+from execution.model_router import ModelRouter, timeframe_key
 from features.registry import FeatureRegistry
 
 CONFIGS_DIR = ENGINE_ROOT / "configs"
@@ -181,7 +181,7 @@ def infer(req: InferRequest) -> InferResponse:
         )
 
     vec = _scale_vector(_vector(req))
-    tf_key = str(req.timeframe)
+    tf_key = timeframe_key(req.timeframe)
     routed = None
     if req.symbol and req.timeframe:
         try:
