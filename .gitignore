@@ -35,3 +35,7 @@ Python-Engine/reports/
 .claude/settings.local.json
 .vscode/
 .idea/
+
+# Local live arming state
+MT5-Platform/MQL5/Files/FXSuite/live_approval.json
+release_fingerprint.json

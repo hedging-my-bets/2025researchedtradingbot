@@ -1,0 +1,36 @@
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+EA = ROOT / "MT5-Platform/MQL5/Experts/FXSuite/MASTER_CONTROLLER.mq5"
+INC = ROOT / "MT5-Platform/MQL5/Include/FXSuite"
+
+def test_master_is_strict_and_live_defaults_off():
+    src = EA.read_text(encoding="utf-8")
+    assert "#property strict" in src
+    assert "input bool InpEnableTrades=false;" in src
+    assert "input bool InpEnableOmegaSizer=false;" in src
+    assert "input bool InpEnableOmegaRiskPolicy=false;" in src
+
+def test_required_omega_inputs_exist():
+    src = EA.read_text(encoding="utf-8")
+    required = [
+        "InpBE_TriggerPctEquity","InpBE_TriggerR","InpBE_OffsetPips",
+        "InpConformalMaxWidth","InpWeeklyLossLimit","InpPeakLossLimit",
+        "InpEnableRolloverGuard","InpStrictNewsGuard",
+    ]
+    for name in required:
+        assert name in src
+
+def test_known_mql_regressions_are_absent():
+    all_src = "\n".join(p.read_text(encoding="utf-8") for p in INC.rglob("*.mqh"))
+    assert "StringUpper(" not in all_src
+    assert "->" not in all_src
+
+def test_required_audit_event_families_exist():
+    src = (INC / "Telemetry/NDJSONLogger.mqh").read_text(encoding="utf-8")
+    for event in [
+        "trade_intent","broker_ack","sl_change","risk_state","hedge_state",
+        "calibration_metrics","parity_metric","news_guard","rollover_guard",
+        "trade_close","mtf_vector",
+    ]:
+        assert f'"{event}"' in src
