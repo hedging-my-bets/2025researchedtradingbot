@@ -61,3 +61,12 @@ def test_live_approval_is_wired_but_legacy_off():
     assert "LiveApprovalOK" in src
     assert "live_approval.csv" in src
     assert 'FXSUITE_BUILD_FINGERPRINT "UNARMED"' in fp
+
+def test_mtf_live_wiring_is_opt_in():
+    src = EA.read_text(encoding="utf-8")
+    mtf = (INC / "ML/MTFConfidence.mqh").read_text(encoding="utf-8")
+    assert "input bool InpEnableMTF=false;" in src
+    assert "PERIOD_M15" in src and "PERIOD_H1" in src and "PERIOD_H4" in src and "PERIOD_D1" in src
+    assert "MTFVector" in src
+    assert "ShouldBlock" in mtf
+    assert "conformal_width=MathMax" in src
