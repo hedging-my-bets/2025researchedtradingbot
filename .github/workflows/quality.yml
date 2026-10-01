@@ -8,7 +8,7 @@ on:
       - "omega/**"
 
 jobs:
-  python-contracts:
+  python-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,20 +16,10 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements-test.txt
-      - run: pytest -q Python-Engine/tests/test_contracts.py
+      - run: pytest -q Python-Engine/tests
       - run: python tools/verify_dependencies.py
-
-  secret-scan:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Fail on obvious hard-coded API keys
-        shell: bash
-        run: |
-          if grep -RIE --exclude-dir=.git --exclude='*.md' '(api_key|token|secret)[[:space:]]*=[[:space:]]*["'\'''][A-Za-z0-9_-]{16,}' .; then
-            echo "Potential hard-coded credential found"
-            exit 1
-          fi
+      - run: python tools/scan_secrets.py
+      - run: python tools/build_release_fingerprint.py --check
 
   mql-not-compiled-here:
     runs-on: ubuntu-latest
